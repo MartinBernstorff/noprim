@@ -4,10 +4,11 @@ CLI that lints Python for primitive-typed function parameters.
 
 ## Layout
 
-- `packages/noprim/` — library. All linting logic. No CLI, no I/O framework.
-- `packages/noprim-cli/` — Typer app. Argument parsing and output formatting only.
+- `packages/noprim-core/` (`noprim_core`) — pure linting logic and value objects. No CLI, no I/O.
+- `packages/noprim-io/` (`noprim_io`) — path walking and file reading.
+- `packages/noprim-cli/` (`noprim_cli`) — Typer app. Argument parsing and output formatting only.
 
-`noprim-cli` may import `noprim`. `noprim` may **not** import `noprim-cli`. Enforced by `tach` (`moon run :modularity`).
+Dependencies point one way: `noprim-core` <- `noprim-io` <- `noprim-cli`. Enforced by `tach` (`moon run :modularity`).
 
 ## Python
 

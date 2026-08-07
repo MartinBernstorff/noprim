@@ -10,12 +10,14 @@ package = false
 members = ["packages/*"]
 
 [tool.uv.sources]
-noprim = { workspace = true }
+noprim-core = { workspace = true }
+noprim-io = { workspace = true }
 noprim-cli = { workspace = true }
 
 [dependency-groups]
 dev = [
-    "noprim",
+    "noprim-core",
+    "noprim-io",
     "noprim-cli",
     "pytest>=9",
     "pytest-xdist>=3",

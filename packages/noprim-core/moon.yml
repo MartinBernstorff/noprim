@@ -1,14 +1,10 @@
 $schema: 'https://moonrepo.dev/schemas/project.json'
 
-id: 'noprim-cli'
+id: 'noprim-core'
 language: 'python'
 stack: 'backend'
-layer: 'application'
+layer: 'library'
 tags: ['python']
-
-dependsOn:
-  - 'noprim-core'
-  - 'noprim-io'
 
 fileGroups:
   sources:

@@ -4,8 +4,9 @@ requires-python = ">=3.13"
 
 [manifest]
 members = [
-    "noprim",
     "noprim-cli",
+    "noprim-core",
+    "noprim-io",
     "noprim-workspace",
 ]
 
@@ -221,9 +222,26 @@ wheels = [
 ]
 
 [[package]]
-name = "noprim"
+name = "noprim-cli"
 version = "0.0.0"
-source = { editable = "packages/noprim" }
+source = { editable = "packages/noprim-cli" }
+dependencies = [
+    { name = "iterpy" },
+    { name = "noprim-core" },
+    { name = "typer" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "iterpy", specifier = ">=1.4" },
+    { name = "noprim-core", editable = "packages/noprim-core" },
+    { name = "typer", specifier = ">=0.15" },
+]
+
+[[package]]
+name = "noprim-core"
+version = "0.0.0"
+source = { editable = "packages/noprim-core" }
 dependencies = [
     { name = "iterpy" },
     { name = "pydantic" },
@@ -236,21 +254,9 @@ requires-dist = [
 ]
 
 [[package]]
-name = "noprim-cli"
+name = "noprim-io"
 version = "0.0.0"
-source = { editable = "packages/noprim-cli" }
-dependencies = [
-    { name = "iterpy" },
-    { name = "noprim" },
-    { name = "typer" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "iterpy", specifier = ">=1.4" },
-    { name = "noprim", editable = "packages/noprim" },
-    { name = "typer", specifier = ">=0.15" },
-]
+source = { editable = "packages/noprim-io" }
 
 [[package]]
 name = "noprim-workspace"
@@ -261,8 +267,9 @@ source = { virtual = "." }
 dev = [
     { name = "actionlint-py" },
     { name = "lefthook" },
-    { name = "noprim" },
     { name = "noprim-cli" },
+    { name = "noprim-core" },
+    { name = "noprim-io" },
     { name = "pyrefly" },
     { name = "pytest" },
     { name = "pytest-randomly" },
@@ -278,8 +285,9 @@ dev = [
 dev = [
     { name = "actionlint-py", specifier = ">=1.7" },
     { name = "lefthook", specifier = ">=1.13" },
-    { name = "noprim", editable = "packages/noprim" },
     { name = "noprim-cli", editable = "packages/noprim-cli" },
+    { name = "noprim-core", editable = "packages/noprim-core" },
+    { name = "noprim-io", editable = "packages/noprim-io" },
     { name = "pyrefly", specifier = ">=0.42" },
     { name = "pytest", specifier = ">=9" },
     { name = "pytest-randomly", specifier = ">=4" },

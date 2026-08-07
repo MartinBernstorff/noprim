@@ -1,10 +1,14 @@
-source_roots = ["packages/noprim/src", "packages/noprim-cli/src"]
+source_roots = ["packages/noprim-core/src", "packages/noprim-io/src", "packages/noprim-cli/src"]
 forbid_circular_dependencies = true
 
 [[modules]]
-path = "noprim"
+path = "noprim_core"
 depends_on = []
 
 [[modules]]
+path = "noprim_io"
+depends_on = ["noprim_core"]
+
+[[modules]]
 path = "noprim_cli"
-depends_on = ["noprim"]
+depends_on = ["noprim_io", "noprim_core"]

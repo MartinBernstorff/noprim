@@ -6,7 +6,7 @@ from typing import Annotated
 import typer
 from iterpy import Arr
 
-from noprim import Filename, SourceCode, Violation, check_source
+from noprim_core import Filename, SourceCode, Violation, check_source
 
 app = typer.Typer(no_args_is_help=True)
 
