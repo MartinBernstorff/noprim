@@ -1,0 +1,10 @@
+$schema: 'https://moonrepo.dev/schemas/workspace.json'
+
+projects:
+  root: '.'
+  noprim: 'packages/noprim'
+  noprim-cli: 'packages/noprim-cli'
+
+vcs:
+  defaultBranch: 'main'
+  provider: 'github'
