@@ -226,12 +226,14 @@ name = "noprim-cli"
 version = "0.0.0"
 source = { editable = "packages/noprim-cli" }
 dependencies = [
+    { name = "noprim-core" },
     { name = "noprim-io" },
     { name = "typer" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "noprim-core", editable = "packages/noprim-core" },
     { name = "noprim-io", editable = "packages/noprim-io" },
     { name = "typer", specifier = ">=0.15" },
 ]

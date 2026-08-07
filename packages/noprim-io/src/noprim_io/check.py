@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pathspec
 from iterpy import Arr
-from pydantic import BaseModel, RootModel
+from pydantic import BaseModel, Field, RootModel
 
-from noprim_core import Filename, PrimitiveNames, SourceCode, Violation, check_source
+from noprim_core import CheckConfig, Filename, SourceCode, Violation, check_source
 
 
 class CheckPaths(RootModel[tuple[Path, ...]]):
@@ -15,8 +15,9 @@ class IgnorePatterns(RootModel[tuple[str, ...]]):
     pass
 
 
-class CheckConfig(BaseModel):
+class DiscoveryConfig(BaseModel):
     excludes: IgnorePatterns = IgnorePatterns(())
+    source: CheckConfig = Field(default_factory=CheckConfig)
 
 
 class FileError(BaseModel):
@@ -131,10 +132,10 @@ def _files_to_check(paths: CheckPaths, excludes: IgnorePatterns) -> Arr[Path]:
     )
 
 
-def _check_one(path: Path) -> CheckReport:
+def _check_one(path: Path, config: CheckConfig) -> CheckReport:
     try:
         source = SourceCode(path.read_text())
-        violations = check_source(source, Filename(str(path)), PrimitiveNames.default())
+        violations = check_source(source, Filename(str(path)), config)
     except (UnicodeDecodeError, SyntaxError) as error:
         return CheckReport(
             violations=(),
@@ -144,8 +145,12 @@ def _check_one(path: Path) -> CheckReport:
     return CheckReport(violations=tuple(violations), errors=(), files_checked=1)
 
 
-def check_paths(paths: CheckPaths, config: CheckConfig) -> CheckReport:
-    reports = _files_to_check(paths, config.excludes).map(_check_one).to_list()
+def check_paths(paths: CheckPaths, config: DiscoveryConfig) -> CheckReport:
+    reports = (
+        _files_to_check(paths, config.excludes)
+        .map(lambda path: _check_one(path, config.source))
+        .to_list()
+    )
     return CheckReport(
         violations=tuple(Arr(reports).map(lambda r: r.violations).flatten()),
         errors=tuple(Arr(reports).map(lambda r: r.errors).flatten()),

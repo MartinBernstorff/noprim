@@ -7,6 +7,7 @@ layer: 'application'
 tags: ['python']
 
 dependsOn:
+  - 'noprim-core'
   - 'noprim-io'
 
 fileGroups:

@@ -15,7 +15,18 @@ def test_exits_nonzero_on_violation(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", str(target)])
 
     assert result.exit_code == 1
-    assert "takes a primitive" in result.stdout
+    assert "greet.name takes a primitive 'str'" in result.stdout
+
+
+def test_reports_return_and_attribute_surfaces(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("class Thing:\n    n: int\ndef f() -> bool: ...\n")
+
+    result = runner.invoke(app, ["check", str(target)])
+
+    assert result.exit_code == 1
+    assert "Thing.n holds a primitive 'int'" in result.stdout
+    assert "f returns a primitive 'bool'" in result.stdout
 
 
 def test_exits_zero_when_clean(tmp_path: Path) -> None:

@@ -5,7 +5,8 @@ from typing import Annotated
 
 import typer
 
-from noprim_io import CheckConfig, CheckPaths, IgnorePatterns, check_paths
+from noprim_core import Surface
+from noprim_io import CheckPaths, DiscoveryConfig, IgnorePatterns, check_paths
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -15,6 +16,16 @@ log = logging.getLogger("noprim")
 @app.callback()
 def cli() -> None:
     """Find function parameters annotated with primitive types."""
+
+
+def _verb(surface: Surface) -> str:
+    match surface:
+        case Surface.PARAMETER:
+            return "takes"
+        case Surface.RETURN:
+            return "returns"
+        case Surface.ATTRIBUTE:
+            return "holds"
 
 
 @app.command()
@@ -36,7 +47,7 @@ def check(
 
     report = check_paths(
         CheckPaths(tuple(paths) if paths is not None else (Path.cwd(),)),
-        CheckConfig(
+        DiscoveryConfig(
             excludes=IgnorePatterns(tuple(exclude if exclude is not None else ()))
         ),
     )
@@ -45,9 +56,8 @@ def check(
 
     for violation in report.violations:
         typer.echo(
-            f"{violation.filename}:{violation.line}: "
-            f"{violation.function}({violation.parameter}: {violation.annotation}) "
-            f"takes a primitive"
+            f"{violation.filename}:{violation.line}: {violation.qualname} "
+            f"{_verb(violation.surface)} a primitive '{violation.annotation}'"
         )
     for error in report.errors:
         typer.echo(f"error: {error.filename}: {error.message}")
