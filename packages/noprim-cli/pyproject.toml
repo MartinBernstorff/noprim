@@ -2,7 +2,7 @@
 name = "noprim-cli"
 version = "0.0.0"
 requires-python = ">=3.13"
-dependencies = ["noprim-core", "noprim-io", "typer>=0.15"]
+dependencies = ["noprim-core", "noprim-io", "typer>=0.15", "pydantic>=2.11"]
 
 [project.scripts]
 noprim = "noprim_cli.main:app"
