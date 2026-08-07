@@ -17,7 +17,12 @@ fileGroups:
     - '/uv.lock'
 
 tasks:
-  # pytest exits 5 on an empty run; add a `test` task alongside the first test.
+  test:
+    script: 'uv run pytest src'
+    inputs:
+      - '@group(sources)'
+      - '@group(manifests)'
+      - '/pytest.toml'
 
   lint:
     script: 'uv run ruff check .'

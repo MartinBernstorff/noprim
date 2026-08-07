@@ -129,7 +129,7 @@ def test_invalid_flags_fail_before_walking_paths(
         result = runner.invoke(app, ["check", "--allow", "itn", str(tmp_path)])
 
     assert result.exit_code == 2
-    assert "Checking" not in caplog.text
+    assert "Checked" not in caplog.text
 
 
 def test_quiet_suppresses_progress_logging(tmp_path: Path) -> None:
@@ -139,4 +139,46 @@ def test_quiet_suppresses_progress_logging(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", "--quiet", str(target)])
 
     assert result.exit_code == 0
-    assert "Checking" not in result.stdout
+    assert "Checked" not in result.stdout
+
+
+def test_exits_zero_when_only_violation_is_ignored(tmp_path: Path) -> None:
+    target = tmp_path / "ignored.py"
+    _ = target.write_text("def greet(name: str) -> None: ...  # noprim: ignore\n")
+
+    result = runner.invoke(app, ["check", str(target)])
+
+    assert result.exit_code == 0
+    assert "greet.name" not in result.stdout
+
+
+def test_defaults_to_the_current_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = (tmp_path / "bad.py").write_text("def greet(name: str) -> None: ...\n")
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["check"])
+
+    assert result.exit_code == 1
+    assert "takes a primitive" in result.stdout
+
+
+def test_repeated_exclude_globs_drop_files(tmp_path: Path) -> None:
+    _ = (tmp_path / "a.py").write_text("def f(a: str) -> None: ...\n")
+    _ = (tmp_path / "b.py").write_text("def g(b: str) -> None: ...\n")
+
+    result = runner.invoke(
+        app, ["check", str(tmp_path), "--exclude", "a.py", "--exclude", "b.py"]
+    )
+
+    assert result.exit_code == 0
+
+
+def test_undecodable_file_exits_nonzero_with_an_error(tmp_path: Path) -> None:
+    _ = (tmp_path / "binary.py").write_bytes(b"\xfe\xff\x00")
+
+    result = runner.invoke(app, ["check", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert "binary.py" in result.stdout
