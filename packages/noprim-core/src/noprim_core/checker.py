@@ -104,15 +104,26 @@ class IgnoredLines(RootModel[frozenset[int]]):
         )
 
 
-def _annotation_name(annotation: ast.expr) -> str:
-    match annotation:
-        case ast.Name(id=name):
+Function = ast.FunctionDef | ast.AsyncFunctionDef
+
+
+class SymbolName(RootModel[str]):
+    pass
+
+
+def _head_name(expression: ast.expr) -> str:
+    match expression:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
             return name
-        case ast.Attribute(attr=name):
-            return name
+        case ast.Subscript(value=value):
+            return _head_name(value)
         case _:
-            # Unresolvable annotations get "", which no deny-list entry can match.
+            # Unresolvable expressions get "", which no deny-list entry can match.
             return ""
+
+
+def _mentions(expressions: Arr[ast.expr], symbol: SymbolName) -> bool:
+    return expressions.filter(lambda e: _head_name(e) == symbol.root).to_list() != []
 
 
 def _parsed_names(text: AnnotationText) -> frozenset[str]:
@@ -128,7 +139,7 @@ def _annotation_names(annotation: ast.expr) -> frozenset[str]:
             return frozenset({name})
         case ast.Subscript(value=value, slice=inner):
             # Literal's arguments are values, not types.
-            if _annotation_name(value) == "Literal":
+            if _head_name(value) == "Literal":
                 return frozenset()
             return _annotation_names(inner)
         case ast.Tuple(elts=elts) | ast.List(elts=elts):
@@ -149,7 +160,7 @@ def _site(annotation: ast.expr, surface: Surface, qualname: Qualname) -> Site:
     )
 
 
-def _parameters(function: ast.FunctionDef | ast.AsyncFunctionDef) -> Arr[ast.arg]:
+def _parameters(function: Function) -> Arr[ast.arg]:
     arguments = function.args
     return Arr(
         [
@@ -166,16 +177,8 @@ class OverloadedNames(RootModel[frozenset[str]]):
     pass
 
 
-Function = ast.FunctionDef | ast.AsyncFunctionDef
-
-
 def _decorated_as_overload(function: Function) -> bool:
-    return (
-        Arr(function.decorator_list)
-        .filter(lambda decorator: _annotation_name(decorator) == "overload")
-        .to_list()
-        != []
-    )
+    return _mentions(Arr(function.decorator_list), SymbolName("overload"))
 
 
 def _is_dunder(function: Function) -> bool:
@@ -190,13 +193,7 @@ def _has_exempt_signature(function: Function, overloaded: OverloadedNames) -> bo
 
 
 def _subclasses_root_model(class_def: ast.ClassDef) -> bool:
-    return (
-        Arr(class_def.bases)
-        .map(lambda base: base.value if isinstance(base, ast.Subscript) else base)
-        .filter(lambda base: _annotation_name(base) == "RootModel")
-        .to_list()
-        != []
-    )
+    return _mentions(Arr(class_def.bases), SymbolName("RootModel"))
 
 
 def _function_sites(
@@ -264,7 +261,7 @@ def _sites_in(body: list[ast.stmt], scope: Qualname) -> Arr[Site]:
         .map(
             lambda node: (
                 _function_sites(node, scope, overloaded)
-                if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+                if isinstance(node, Function)
                 else _class_sites(node, scope)
                 if isinstance(node, ast.ClassDef)
                 else Arr[Site]([])

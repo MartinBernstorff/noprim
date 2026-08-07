@@ -125,6 +125,7 @@ def test_matches_on_last_dotted_segment(annotation: str) -> None:
         "def f(x: list[Name]) -> None: ...\n",
         "def f(x: dict[Name, Name]) -> None: ...\n",
         "def f(x: Name) -> None: ...\n",
+        'def f(x: "Name") -> None: ...\n',
         "def f(x: Name): ...\n",
         "def f(x) -> None: ...\n",
         "T = TypeVar('T')\ndef f(x: T) -> T: ...\n",
@@ -165,7 +166,7 @@ def test_parses_string_annotations(annotation: str) -> None:
     assert [v.qualname for v in violations] == ["f.x"]
 
 
-@pytest.mark.parametrize("annotation", ['"not python!!"', '""', '"Name"'])
+@pytest.mark.parametrize("annotation", ['"not python!!"', '""', '"list["'])
 def test_skips_unparseable_string_annotations(annotation: str) -> None:
     assert list(_check(f"def f(x: {annotation}) -> None: ...\n")) == []
 
@@ -175,16 +176,47 @@ def test_skips_unparseable_string_annotations(annotation: str) -> None:
     [
         'class Thing:\n    def m(self: "Thing") -> None: ...\n',
         'class Thing:\n    @classmethod\n    def m(cls: "type[Thing]") -> None: ...\n',
-        "class Thing:\n    def __init__(self, x: int) -> None: ...\n",
-        "class Thing:\n    def __eq__(self, other: object) -> bool: ...\n",
-        "class Id(RootModel[str]):\n    def get(self, key: int) -> str: ...\n",
-        "class Id(RootModel):\n    root: str\n",
-        'UserId = NewType("UserId", str)\n',
-        'class Thing:\n    UserId = NewType("UserId", str)\n',
-        "@overload\ndef f(x: Name) -> Name: ...\ndef f(x: object) -> object: ...\n",
     ],
 )
-def test_exempt_surfaces(source: str) -> None:
+def test_exempts_self_and_cls(source: str) -> None:
+    assert list(_check(source)) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "class Thing:\n    def __init__(self, x: int) -> None: ...\n",
+        "class Thing:\n    def __eq__(self, other: object) -> bool: ...\n",
+    ],
+)
+def test_exempts_dunder_methods(source: str) -> None:
+    assert list(_check(source)) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "class Id(RootModel[str]):\n    def get(self, key: int) -> str: ...\n",
+        "class Id(RootModel):\n    root: str\n",
+    ],
+)
+def test_exempts_root_model_bodies(source: str) -> None:
+    assert list(_check(source)) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'UserId = NewType("UserId", str)\n',
+        'class Thing:\n    UserId = NewType("UserId", str)\n',
+    ],
+)
+def test_exempts_new_type_calls(source: str) -> None:
+    assert list(_check(source)) == []
+
+
+def test_exempts_overload_implementation() -> None:
+    source = "@overload\ndef f(x: Name) -> Name: ...\ndef f(x: object) -> object: ...\n"
     assert list(_check(source)) == []
 
 
