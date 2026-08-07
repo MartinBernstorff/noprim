@@ -1,0 +1,27 @@
+min_version: 2.1.0
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: ruff
+      group:
+        piped: true
+        jobs:
+          - name: lint-fix
+            run: moon run :lint-fix
+            stage_fixed: true
+          - name: format
+            run: moon run :format
+            stage_fixed: true
+
+    - name: typecheck
+      run: moon run :typecheck
+
+    - name: modularity
+      run: moon run :modularity
+
+    - name: test
+      run: moon run :test
+
+    - name: actionlint
+      run: moon run :actionlint

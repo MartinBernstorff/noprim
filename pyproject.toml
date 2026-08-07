@@ -1,0 +1,29 @@
+[project]
+name = "noprim-workspace"
+version = "0.0.0"
+requires-python = ">=3.13"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+noprim = { workspace = true }
+noprim-cli = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "noprim",
+    "noprim-cli",
+    "pytest>=9",
+    "pytest-xdist>=3",
+    "pytest-randomly>=4",
+    "pytest-testmon>=2",
+    "pyrefly>=0.42",
+    "tach>=0.30",
+    "ruff>=0.14",
+    "actionlint-py>=1.7",
+    "lefthook>=1.13",
+]

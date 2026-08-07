@@ -1,0 +1,10 @@
+source_roots = ["packages/noprim/src", "packages/noprim-cli/src"]
+forbid_circular_dependencies = true
+
+[[modules]]
+path = "noprim"
+depends_on = []
+
+[[modules]]
+path = "noprim_cli"
+depends_on = ["noprim"]

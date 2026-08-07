@@ -1,0 +1,54 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+id: 'noprim-cli'
+language: 'python'
+stack: 'backend'
+layer: 'application'
+tags: ['python']
+
+dependsOn:
+  - 'noprim'
+
+fileGroups:
+  sources:
+    - 'src/**/*.py'
+  manifests:
+    - 'pyproject.toml'
+    - '/uv.lock'
+
+tasks:
+  test:
+    script: 'uv run pytest src'
+    inputs:
+      - '@group(sources)'
+      - '@group(manifests)'
+      - '/pytest.toml'
+
+  lint:
+    script: 'uv run ruff check .'
+    inputs:
+      - '@group(sources)'
+      - '/ruff.toml'
+
+  lint-fix:
+    script: 'uv run ruff check --fix .'
+    options:
+      runInCI: false
+
+  format-check:
+    script: 'uv run ruff format --check .'
+    inputs:
+      - '@group(sources)'
+      - '/ruff.toml'
+
+  format:
+    script: 'uv run ruff format .'
+    options:
+      runInCI: false
+
+  typecheck:
+    script: 'uv run pyrefly check src'
+    inputs:
+      - '@group(sources)'
+      - '@group(manifests)'
+      - '/pyrefly.toml'

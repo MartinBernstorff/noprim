@@ -1,0 +1,15 @@
+[project]
+name = "noprim-cli"
+version = "0.0.0"
+requires-python = ">=3.13"
+dependencies = ["noprim", "typer>=0.15", "iterpy>=1.4"]
+
+[project.scripts]
+noprim = "noprim_cli.main:app"
+
+[build-system]
+requires = ["uv_build>=0.11"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+noprim = { workspace = true }

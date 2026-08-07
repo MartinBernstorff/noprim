@@ -1,0 +1,10 @@
+$schema: 'https://moonrepo.dev/schemas/toolchains.json'
+
+unstable_python:
+  version: '3.13.0'
+  packageManager: 'uv'
+  venvName: '.venv'
+
+unstable_uv:
+  version: '0.11.0'
+  syncArgs: ['--locked']

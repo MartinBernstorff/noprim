@@ -1,0 +1,31 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+id: 'root'
+language: 'python'
+stack: 'backend'
+layer: 'unknown'
+
+fileGroups:
+  sources:
+    - 'packages/*/src/**/*.py'
+  manifests:
+    - 'pyproject.toml'
+    - 'packages/*/pyproject.toml'
+    - 'uv.lock'
+  workflows:
+    - '.github/workflows/*.yml'
+    - '.github/dependabot.yml'
+
+tasks:
+  # Boundaries span packages, so this cannot live in a single package.
+  modularity:
+    script: 'uv run tach check && uv run tach check-external'
+    inputs:
+      - '@group(sources)'
+      - '@group(manifests)'
+      - 'tach.toml'
+
+  actionlint:
+    script: 'uv run actionlint'
+    inputs:
+      - '@group(workflows)'
