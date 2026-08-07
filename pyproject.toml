@@ -1,24 +1,37 @@
 [project]
-name = "noprim-workspace"
-version = "0.0.0"
+name = "noprim"
+version = "0.1.0"
 requires-python = ">=3.13"
+dependencies = [
+    "typer>=0.15",
+    "pydantic>=2.11",
+    "iterpy>=1.4",
+    "pathspec>=0.12",
+]
 
-[tool.uv]
-package = false
+[project.scripts]
+noprim = "noprim_cli.main:app"
+
+# hatchling, not uv_build: uv_build's module-root is a single directory and
+# cannot gather the three module dirs under packages/*/src into one wheel.
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "packages/noprim-core/src/noprim_core",
+    "packages/noprim-io/src/noprim_io",
+    "packages/noprim-cli/src/noprim_cli",
+]
+# Tests live beside the code, so they would otherwise ship to every user.
+exclude = ["test_*.py"]
 
 [tool.uv.workspace]
 members = ["packages/*"]
 
-[tool.uv.sources]
-noprim-core = { workspace = true }
-noprim-io = { workspace = true }
-noprim-cli = { workspace = true }
-
 [dependency-groups]
 dev = [
-    "noprim-core",
-    "noprim-io",
-    "noprim-cli",
     "pytest>=9",
     "pytest-xdist>=3",
     "pytest-randomly>=4",
