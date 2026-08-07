@@ -69,14 +69,17 @@ class Surface(StrEnum):
 
 class Site(BaseModel):
     line: int
+    column: int
     surface: Surface
     qualname: str
     annotation: str
+    denied: str
 
 
 class Violation(BaseModel):
     filename: str
     line: int
+    column: int
     surface: Surface
     qualname: str
     annotation: str
@@ -117,9 +120,11 @@ def _annotation_name(annotation: ast.expr) -> str:
 def _site(annotation: ast.expr, surface: Surface, qualname: Qualname) -> Site:
     return Site(
         line=annotation.lineno,
+        column=annotation.col_offset + 1,
         surface=surface,
         qualname=qualname.root,
-        annotation=_annotation_name(annotation),
+        annotation=ast.unparse(annotation),
+        denied=_annotation_name(annotation),
     )
 
 
@@ -201,12 +206,13 @@ def check_source(
     ignored = IgnoredLines.parse(source)
     return (
         _sites_in(tree.body, Qualname(""))
-        .filter(lambda site: site.annotation in config.denied.root)
+        .filter(lambda site: site.denied in config.denied.root)
         .filter(lambda site: site.line not in ignored.root)
         .map(
             lambda site: Violation(
                 filename=filename.root,
                 line=site.line,
+                column=site.column,
                 surface=site.surface,
                 qualname=site.qualname,
                 annotation=site.annotation,

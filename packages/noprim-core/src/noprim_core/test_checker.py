@@ -27,6 +27,11 @@ def test_flags_primitive_parameter() -> None:
     assert violations[0].surface == Surface.PARAMETER
 
 
+def test_locates_violations_at_the_annotation() -> None:
+    violations = _check("def greet(name: str) -> bool: ...\n")
+    assert [(v.line, v.column) for v in violations] == [(1, 17), (1, 25)]
+
+
 def test_ignores_non_primitive_parameter() -> None:
     assert list(_check("def greet(name: Name) -> None: ...\n")) == []
 
@@ -52,19 +57,19 @@ def test_qualifies_method_surfaces_with_their_class() -> None:
 
 
 @pytest.mark.parametrize(
-    ("base", "member"),
+    ("base", "annotation"),
     [
-        ("", "count: int"),
-        ("", "count: ClassVar[int]"),
-        ("TypedDict", "count: int"),
-        ("NamedTuple", "count: int"),
-        ("Protocol", "count: int"),
+        ("", "int"),
+        ("", "ClassVar[int]"),
+        ("TypedDict", "int"),
+        ("NamedTuple", "int"),
+        ("Protocol", "int"),
     ],
 )
-def test_flags_primitive_class_attribute(base: str, member: str) -> None:
-    violations = _check(f"class Thing({base}):\n    {member}\n")
+def test_flags_primitive_class_attribute(base: str, annotation: str) -> None:
+    violations = _check(f"class Thing({base}):\n    count: {annotation}\n")
     assert [(v.qualname, v.surface, v.annotation) for v in violations] == [
-        ("Thing.count", Surface.ATTRIBUTE, "int")
+        ("Thing.count", Surface.ATTRIBUTE, annotation)
     ]
 
 
@@ -116,7 +121,7 @@ def test_default_deny_list(annotation: str) -> None:
 @pytest.mark.parametrize("annotation", ["datetime.datetime", "dt.datetime"])
 def test_matches_on_last_dotted_segment(annotation: str) -> None:
     violations = _check(f"def f(x: {annotation}) -> None: ...\n")
-    assert [v.annotation for v in violations] == ["datetime"]
+    assert [v.annotation for v in violations] == [annotation]
 
 
 @pytest.mark.parametrize(

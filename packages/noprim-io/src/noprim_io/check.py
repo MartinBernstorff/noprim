@@ -22,6 +22,8 @@ class DiscoveryConfig(BaseModel):
 
 class FileError(BaseModel):
     filename: str
+    line: int
+    column: int
     message: str
 
 
@@ -132,15 +134,26 @@ def _files_to_check(paths: CheckPaths, excludes: IgnorePatterns) -> Arr[Path]:
     )
 
 
+def _file_error(path: Path, error: UnicodeDecodeError | SyntaxError) -> FileError:
+    if isinstance(error, SyntaxError):
+        return FileError(
+            filename=str(path),
+            line=error.lineno if error.lineno is not None else 1,
+            column=error.offset if error.offset is not None else 1,
+            message=f"syntax error: {error.msg}",
+        )
+    return FileError(
+        filename=str(path), line=1, column=1, message=f"decode error: {error.reason}"
+    )
+
+
 def _check_one(path: Path, config: CheckConfig) -> CheckReport:
     try:
         source = SourceCode(path.read_text())
         violations = check_source(source, Filename(str(path)), config)
     except (UnicodeDecodeError, SyntaxError) as error:
         return CheckReport(
-            violations=(),
-            errors=(FileError(filename=str(path), message=str(error)),),
-            files_checked=1,
+            violations=(), errors=(_file_error(path, error),), files_checked=1
         )
     return CheckReport(violations=tuple(violations), errors=(), files_checked=1)
 
