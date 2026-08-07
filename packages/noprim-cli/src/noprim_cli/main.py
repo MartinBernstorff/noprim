@@ -31,6 +31,11 @@ class AllowedAndDeniedError(typer.BadParameter):
         super().__init__(f"passed to both --allow and --deny: {', '.join(names.root)}")
 
 
+class EmptyNameError(typer.BadParameter):
+    def __init__(self) -> None:
+        super().__init__("--allow and --deny need a type name; got an empty one")
+
+
 class NotOnDenyListError(typer.BadParameter):
     def __init__(self, names: AllowedNames) -> None:
         super().__init__(
@@ -64,6 +69,9 @@ def _verb(surface: Surface) -> str:
 
 def _resolve_config(allow: AllowedNames, deny: DeniedNames) -> CheckConfig:
     default = DeniedTypes.default().root
+    # "" is the sentinel for unresolvable annotations, so denying it matches everything.
+    if "" in set(allow.root) | set(deny.root):
+        raise EmptyNameError
     conflicting = sorted(set(allow.root) & set(deny.root))
     if len(conflicting) > 0:
         raise AllowedAndDeniedError(AllowedNames(tuple(conflicting)))
@@ -91,6 +99,11 @@ def check(
         level=logging.ERROR if quiet else logging.INFO, format="%(message)s"
     )
 
+    config = _resolve_config(
+        AllowedNames(tuple(allow if allow is not None else ())),
+        DeniedNames(tuple(deny if deny is not None else ())),
+    )
+
     files = (
         Arr(paths)
         .map(lambda p: list(p.rglob("*.py")) if p.is_dir() else [p])
@@ -99,10 +112,6 @@ def check(
     )
     log.info("Checking %d file(s)", len(files))
 
-    config = _resolve_config(
-        AllowedNames(tuple(allow if allow is not None else ())),
-        DeniedNames(tuple(deny if deny is not None else ())),
-    )
     violations = Arr(files).map(lambda p: _check_file(p, config)).flatten().to_list()
     for violation in violations:
         typer.echo(
