@@ -43,6 +43,14 @@ def test_flags_primitive_return() -> None:
     ]
 
 
+def test_qualifies_method_surfaces_with_their_class() -> None:
+    violations = _check("class Thing:\n    def m(self, y: int) -> bool: ...\n")
+    assert [(v.qualname, v.surface) for v in violations] == [
+        ("Thing.m.y", Surface.PARAMETER),
+        ("Thing.m", Surface.RETURN),
+    ]
+
+
 @pytest.mark.parametrize(
     ("base", "member"),
     [

@@ -13,6 +13,13 @@ class Filename(RootModel[str]):
     pass
 
 
+class Qualname(RootModel[str]):
+    def child(self, name: "Qualname") -> "Qualname":
+        if self.root == "":
+            return name
+        return Qualname(f"{self.root}.{name.root}")
+
+
 class DeniedTypes(RootModel[frozenset[str]]):
     @classmethod
     def default(cls) -> "DeniedTypes":
@@ -57,6 +64,13 @@ class Surface(StrEnum):
     ATTRIBUTE = "attribute"
 
 
+class Site(BaseModel):
+    line: int
+    surface: Surface
+    qualname: str
+    annotation: str
+
+
 class Violation(BaseModel):
     filename: str
     line: int
@@ -65,8 +79,7 @@ class Violation(BaseModel):
     annotation: str
 
 
-# Unresolvable annotations get "", which no deny-list entry can match.
-def _annotation_name(annotation: ast.expr | None) -> str:
+def _annotation_name(annotation: ast.expr) -> str:
     match annotation:
         case ast.Name(id=name):
             return name
@@ -77,25 +90,16 @@ def _annotation_name(annotation: ast.expr | None) -> str:
         ):
             return _annotation_name(inner)
         case _:
+            # Unresolvable annotations get "", which no deny-list entry can match.
             return ""
 
 
-Site = tuple[ast.expr, Surface, str]
-
-
-def _violations_at(
-    sites: Arr[Site], filename: Filename, config: CheckConfig
-) -> Arr[Violation]:
-    return Arr(
-        Violation(
-            filename=filename.root,
-            line=node.lineno,
-            surface=surface,
-            qualname=qualname,
-            annotation=_annotation_name(node),
-        )
-        for node, surface, qualname in sites
-        if _annotation_name(node) in config.denied.root
+def _site(annotation: ast.expr, surface: Surface, qualname: Qualname) -> Site:
+    return Site(
+        line=annotation.lineno,
+        surface=surface,
+        qualname=qualname.root,
+        annotation=_annotation_name(annotation),
     )
 
 
@@ -112,45 +116,78 @@ def _parameters(function: ast.FunctionDef | ast.AsyncFunctionDef) -> Arr[ast.arg
     )
 
 
-def _function_sites(function: ast.FunctionDef | ast.AsyncFunctionDef) -> Arr[Site]:
-    parameters = Arr[Site](
-        (arg.annotation, Surface.PARAMETER, f"{function.name}.{arg.arg}")
-        for arg in _parameters(function)
-        if arg.annotation is not None
-    )
-    if function.returns is None:
-        return parameters
-    return Arr([*parameters, (function.returns, Surface.RETURN, function.name)])
-
-
-def _class_sites(class_def: ast.ClassDef) -> Arr[Site]:
+def _function_sites(
+    function: ast.FunctionDef | ast.AsyncFunctionDef, scope: Qualname
+) -> Arr[Site]:
+    qualname = scope.child(Qualname(function.name))
+    returns = function.returns
     return Arr(
-        (
-            node.annotation,
-            Surface.ATTRIBUTE,
-            f"{class_def.name}.{ast.unparse(node.target)}",
+        [
+            *(
+                _site(
+                    arg.annotation, Surface.PARAMETER, qualname.child(Qualname(arg.arg))
+                )
+                for arg in _parameters(function)
+                if arg.annotation is not None
+            ),
+            *(
+                [_site(returns, Surface.RETURN, qualname)]
+                if returns is not None
+                else []
+            ),
+            *_sites_in(function.body, qualname),
+        ]
+    )
+
+
+def _class_sites(class_def: ast.ClassDef, scope: Qualname) -> Arr[Site]:
+    qualname = scope.child(Qualname(class_def.name))
+    return Arr(
+        [
+            *(
+                _site(
+                    node.annotation,
+                    Surface.ATTRIBUTE,
+                    qualname.child(Qualname(ast.unparse(node.target))),
+                )
+                for node in class_def.body
+                if isinstance(node, ast.AnnAssign)
+            ),
+            *_sites_in(class_def.body, qualname),
+        ]
+    )
+
+
+def _sites_in(body: list[ast.stmt], scope: Qualname) -> Arr[Site]:
+    return (
+        Arr(body)
+        .map(
+            lambda node: (
+                _function_sites(node, scope)
+                if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+                else _class_sites(node, scope)
+                if isinstance(node, ast.ClassDef)
+                else Arr[Site]([])
+            )
         )
-        for node in class_def.body
-        if isinstance(node, ast.AnnAssign)
+        .flatten()
     )
 
 
 def check_source(
     source: SourceCode, filename: Filename, config: CheckConfig
 ) -> Arr[Violation]:
-    nodes = list(ast.walk(ast.parse(source.root, filename=filename.root)))
-    sites = Arr[Site](
-        [
-            *Arr(
-                node
-                for node in nodes
-                if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    tree = ast.parse(source.root, filename=filename.root)
+    return (
+        _sites_in(tree.body, Qualname(""))
+        .filter(lambda site: site.annotation in config.denied.root)
+        .map(
+            lambda site: Violation(
+                filename=filename.root,
+                line=site.line,
+                surface=site.surface,
+                qualname=site.qualname,
+                annotation=site.annotation,
             )
-            .map(_function_sites)
-            .flatten(),
-            *Arr(node for node in nodes if isinstance(node, ast.ClassDef))
-            .map(_class_sites)
-            .flatten(),
-        ]
+        )
     )
-    return _violations_at(sites, filename, config)
