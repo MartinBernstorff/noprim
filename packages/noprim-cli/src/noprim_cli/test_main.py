@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -6,6 +7,12 @@ from typer.testing import CliRunner
 from noprim_cli.main import Duration, app, pretty_duration
 
 runner = CliRunner()
+
+
+def _plain(output: str) -> str:
+    # Rich colours and wraps errors, splitting "--allow" across escapes and lines.
+    stripped = re.sub(r"\x1b\[[0-9;]*m", "", output).replace("│", " ")
+    return " ".join(stripped.split())
 
 
 def test_reports_each_surface_ruff_style(tmp_path: Path) -> None:
@@ -149,6 +156,97 @@ def test_summary_counts_unreadable_files_apart_from_violations(tmp_path: Path) -
     result = runner.invoke(app, ["check", str(tmp_path)])
 
     assert result.stderr.rstrip().endswith(" - found 1 violation, 1 error")
+
+
+def test_allow_removes_type_from_deny_list(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(x: Any) -> str: ...\n")
+
+    result = runner.invoke(app, ["check", "--allow", "Any", str(target)])
+
+    assert result.stdout.splitlines() == [
+        f'{target}:1:18: return type is annotated "str"'
+    ]
+
+
+def test_deny_adds_type_to_deny_list(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(amount: Money) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", "--deny", "Money", str(target)])
+
+    assert result.exit_code == 1
+    assert 'parameter "amount" is annotated "Money"' in result.stdout
+
+
+def test_flags_are_repeatable(tmp_path: Path) -> None:
+    target = tmp_path / "mixed.py"
+    _ = target.write_text("def f(a: int, b: str, c: Money, d: Weight) -> None: ...\n")
+
+    result = runner.invoke(
+        app,
+        [
+            "check",
+            "--allow",
+            "int",
+            "--allow",
+            "str",
+            "--deny",
+            "Money",
+            "--deny",
+            "Weight",
+            str(target),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert 'parameter "a"' not in result.stdout
+    assert 'parameter "b"' not in result.stdout
+    assert 'parameter "c" is annotated "Money"' in result.stdout
+    assert 'parameter "d" is annotated "Weight"' in result.stdout
+
+
+def test_name_in_both_flags_exits_two(tmp_path: Path) -> None:
+    target = tmp_path / "good.py"
+    _ = target.write_text("def f() -> None: ...\n")
+
+    result = runner.invoke(
+        app, ["check", "--allow", "int", "--deny", "int", str(target)]
+    )
+
+    assert result.exit_code == 2
+    assert "passed to both --allow and --deny: int" in _plain(result.output)
+
+
+def test_allow_of_unknown_name_exits_two(tmp_path: Path) -> None:
+    target = tmp_path / "good.py"
+    _ = target.write_text("def f() -> None: ...\n")
+
+    result = runner.invoke(app, ["check", "--allow", "itn", str(target)])
+
+    assert result.exit_code == 2
+    assert "--allow of a name that is not on the deny-list: itn" in _plain(
+        result.output
+    )
+
+
+def test_empty_name_exits_two(tmp_path: Path) -> None:
+    target = tmp_path / "good.py"
+    _ = target.write_text("def f() -> None: ...\n")
+
+    result = runner.invoke(app, ["check", "--deny", "", str(target)])
+
+    assert result.exit_code == 2
+    assert "got an empty one" in _plain(result.output)
+
+
+def test_invalid_flags_fail_before_walking_paths(tmp_path: Path) -> None:
+    _ = (tmp_path / "good.py").write_text("def f() -> None: ...\n")
+
+    result = runner.invoke(app, ["check", "--allow", "itn", str(tmp_path)])
+
+    assert result.exit_code == 2
+    assert "Checked" not in result.stderr
 
 
 @pytest.mark.parametrize(

@@ -130,6 +130,7 @@ def test_matches_on_last_dotted_segment(annotation: str) -> None:
         "def f(x: list[Name]) -> None: ...\n",
         "def f(x: dict[Name, Name]) -> None: ...\n",
         "def f(x: Name) -> None: ...\n",
+        'def f(x: "Name") -> None: ...\n',
         "def f(x: Name): ...\n",
         "def f(x) -> None: ...\n",
         "T = TypeVar('T')\ndef f(x: T) -> T: ...\n",
@@ -138,6 +139,104 @@ def test_matches_on_last_dotted_segment(annotation: str) -> None:
 )
 def test_passes_clean_annotations(source: str) -> None:
     assert list(_check(source)) == []
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "list[str]",
+        "dict[str, UserId]",
+        "Callable[[Event], str]",
+        "Annotated[str, Field(gt=0)]",
+        "MyGeneric[str]",
+        "list[list[dict[Name, str]]]",
+    ],
+)
+def test_flags_nested_primitive_once_with_full_text(annotation: str) -> None:
+    violations = _check(f"def f(x: {annotation}) -> None: ...\n")
+    assert [(v.qualname, v.annotation) for v in violations] == [("f.x", annotation)]
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    ["Literal['a', 'b']", "typing.Literal[1, 2]", "dict[Name, Literal['a']]"],
+)
+def test_ignores_literal_arguments(annotation: str) -> None:
+    assert list(_check(f"def f(x: {annotation}) -> None: ...\n")) == []
+
+
+@pytest.mark.parametrize("annotation", ['"str"', 'list["str"]', '"list[str]"'])
+def test_parses_string_annotations(annotation: str) -> None:
+    violations = _check(f"def f(x: {annotation}) -> None: ...\n")
+    assert [v.qualname for v in violations] == ["f.x"]
+
+
+@pytest.mark.parametrize("annotation", ['"not python!!"', '""', '"list["'])
+def test_skips_unparseable_string_annotations(annotation: str) -> None:
+    assert list(_check(f"def f(x: {annotation}) -> None: ...\n")) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'class Thing:\n    def m(self: "Thing") -> None: ...\n',
+        'class Thing:\n    @classmethod\n    def m(cls: "type[Thing]") -> None: ...\n',
+    ],
+)
+def test_exempts_self_and_cls(source: str) -> None:
+    assert list(_check(source)) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "class Thing:\n    def __init__(self, x: int) -> None: ...\n",
+        "class Thing:\n    def __eq__(self, other: object) -> bool: ...\n",
+    ],
+)
+def test_exempts_dunder_methods(source: str) -> None:
+    assert list(_check(source)) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "class Id(RootModel[str]):\n    def get(self, key: int) -> str: ...\n",
+        "class Id(RootModel):\n    root: str\n",
+    ],
+)
+def test_exempts_root_model_bodies(source: str) -> None:
+    assert list(_check(source)) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'UserId = NewType("UserId", str)\n',
+        'class Thing:\n    UserId = NewType("UserId", str)\n',
+    ],
+)
+def test_exempts_new_type_calls(source: str) -> None:
+    assert list(_check(source)) == []
+
+
+def test_exempts_overload_implementation() -> None:
+    source = "@overload\ndef f(x: Name) -> Name: ...\ndef f(x: object) -> object: ...\n"
+    assert list(_check(source)) == []
+
+
+def test_reports_overload_stubs_only() -> None:
+    violations = _check(
+        "@overload\ndef f(x: int) -> str: ...\n"
+        "@overload\ndef f(x: Name) -> Name: ...\n"
+        "def f(x: object) -> object: ...\n"
+    )
+    assert [(v.line, v.annotation) for v in violations] == [(2, "int"), (2, "str")]
+
+
+def test_private_functions_still_report() -> None:
+    violations = _check("def _f(x: int) -> None: ...\n")
+    assert [v.qualname for v in violations] == ["_f.x"]
 
 
 def test_uses_configured_deny_list() -> None:
