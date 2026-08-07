@@ -1,10 +1,13 @@
 $schema: 'https://moonrepo.dev/schemas/project.json'
 
-id: 'noprim'
+id: 'noprim-io'
 language: 'python'
 stack: 'backend'
 layer: 'library'
 tags: ['python']
+
+dependsOn:
+  - 'noprim-core'
 
 fileGroups:
   sources:
@@ -14,12 +17,7 @@ fileGroups:
     - '/uv.lock'
 
 tasks:
-  test:
-    script: 'uv run pytest src'
-    inputs:
-      - '@group(sources)'
-      - '@group(manifests)'
-      - '/pytest.toml'
+  # pytest exits 5 on an empty run; add a `test` task alongside the first test.
 
   lint:
     script: 'uv run ruff check .'

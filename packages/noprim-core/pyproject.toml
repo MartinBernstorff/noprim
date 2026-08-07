@@ -1,5 +1,5 @@
 [project]
-name = "noprim"
+name = "noprim-core"
 version = "0.0.0"
 requires-python = ">=3.13"
 dependencies = ["pydantic>=2", "iterpy>=1.4"]

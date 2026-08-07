@@ -1,4 +1,4 @@
-from noprim.checker import Filename, SourceCode, check_source
+from noprim_core.checker import Filename, SourceCode, check_source
 
 
 def test_flags_primitive_parameter() -> None:

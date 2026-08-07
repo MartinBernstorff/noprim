@@ -2,7 +2,8 @@ $schema: 'https://moonrepo.dev/schemas/workspace.json'
 
 projects:
   root: '.'
-  noprim: 'packages/noprim'
+  noprim-core: 'packages/noprim-core'
+  noprim-io: 'packages/noprim-io'
   noprim-cli: 'packages/noprim-cli'
 
 vcs:
