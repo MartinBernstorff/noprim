@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from noprim_io.check import CheckConfig, CheckPaths, ExcludeGlobs, check_paths
+from noprim_io.check import CheckConfig, CheckPaths, IgnorePatterns, check_paths
 
 
 def test_checks_an_explicitly_named_file(tmp_path: Path) -> None:
@@ -50,15 +50,15 @@ def test_lints_a_gitignored_file_when_named_explicitly(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("glob", "expected"),
     [
-        (ExcludeGlobs(("migrations/*",)), ["kept"]),
-        (ExcludeGlobs(("**/old.py",)), ["kept"]),
-        (ExcludeGlobs(("*.py",)), []),
-        (ExcludeGlobs(("/kept.py",)), ["migrated"]),
+        (IgnorePatterns(("migrations/*",)), ["kept"]),
+        (IgnorePatterns(("**/old.py",)), ["kept"]),
+        (IgnorePatterns(("*.py",)), []),
+        (IgnorePatterns(("/kept.py",)), ["migrated"]),
     ],
     ids=["directory", "any-depth", "bare-name-is-any-depth", "leading-slash-anchors"],
 )
 def test_exclude_globs_match_root_relative_paths(
-    tmp_path: Path, glob: ExcludeGlobs, expected: list[str]
+    tmp_path: Path, glob: IgnorePatterns, expected: list[str]
 ) -> None:
     (tmp_path / "migrations").mkdir()
     _ = (tmp_path / "migrations" / "old.py").write_text(
@@ -77,7 +77,7 @@ def test_accepts_repeated_exclude_globs(tmp_path: Path) -> None:
     _ = (tmp_path / "c.py").write_text("def h(c: int) -> None: ...\n")
 
     report = check_paths(
-        CheckPaths((tmp_path,)), CheckConfig(excludes=ExcludeGlobs(("a.py", "b.py")))
+        CheckPaths((tmp_path,)), CheckConfig(excludes=IgnorePatterns(("a.py", "b.py")))
     )
 
     assert [v.parameter for v in report.violations] == ["c"]
@@ -127,5 +127,46 @@ def test_undecodable_file_is_reported_as_an_error_without_stopping_the_run(
     report = check_paths(CheckPaths((tmp_path,)), CheckConfig())
 
     assert [v.parameter for v in report.violations] == ["b"]
-    assert len(report.errors) == 1
-    assert "binary.py" in report.errors[0]
+    assert [Path(e.filename).name for e in report.errors] == ["binary.py"]
+
+
+def _repo(tmp_path: Path) -> Path:
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "src").mkdir()
+    return tmp_path
+
+
+def test_respects_a_gitignore_above_the_walked_directory(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _ = (root / ".gitignore").write_text("generated.py\n")
+    _ = (root / "src" / "generated.py").write_text("def f(a: int) -> None: ...\n")
+    _ = (root / "src" / "kept.py").write_text("def g(b: int) -> None: ...\n")
+
+    report = check_paths(CheckPaths((root / "src",)), CheckConfig())
+
+    assert [v.parameter for v in report.violations] == ["b"]
+
+
+def test_exclude_globs_are_relative_to_the_repo_root(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _ = (root / "src" / "old.py").write_text("def f(a: int) -> None: ...\n")
+    _ = (root / "src" / "kept.py").write_text("def g(b: int) -> None: ...\n")
+
+    report = check_paths(
+        CheckPaths((root / "src",)),
+        CheckConfig(excludes=IgnorePatterns(("/src/old.py",))),
+    )
+
+    assert [v.parameter for v in report.violations] == ["b"]
+
+
+def test_unparseable_file_is_reported_as_an_error_without_stopping_the_run(
+    tmp_path: Path,
+) -> None:
+    _ = (tmp_path / "broken.py").write_text("def f(a: int -> None:\n")
+    _ = (tmp_path / "readable.py").write_text("def g(b: int) -> None: ...\n")
+
+    report = check_paths(CheckPaths((tmp_path,)), CheckConfig())
+
+    assert [v.parameter for v in report.violations] == ["b"]
+    assert [e.filename for e in report.errors] == [str(tmp_path / "broken.py")]

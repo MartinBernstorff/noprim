@@ -5,7 +5,7 @@ from typing import Annotated
 
 import typer
 
-from noprim_io import CheckConfig, CheckPaths, ExcludeGlobs, check_paths
+from noprim_io import CheckConfig, CheckPaths, IgnorePatterns, check_paths
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -37,7 +37,7 @@ def check(
     report = check_paths(
         CheckPaths(tuple(paths) if paths is not None else (Path.cwd(),)),
         CheckConfig(
-            excludes=ExcludeGlobs(tuple(exclude if exclude is not None else ()))
+            excludes=IgnorePatterns(tuple(exclude if exclude is not None else ()))
         ),
     )
 
@@ -50,7 +50,7 @@ def check(
             f"takes a primitive"
         )
     for error in report.errors:
-        typer.echo(f"error: {error}")
+        typer.echo(f"error: {error.filename}: {error.message}")
 
     if len(report.violations) > 0 or len(report.errors) > 0:
         sys.exit(1)
