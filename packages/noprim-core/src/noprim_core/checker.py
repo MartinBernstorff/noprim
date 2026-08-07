@@ -85,14 +85,15 @@ class Violation(BaseModel):
 class IgnoredLines(RootModel[frozenset[int]]):
     @classmethod
     def parse(cls, source: SourceCode) -> "IgnoredLines":
-        # Bare form only, so `# noprim: ignore[NOPRIM002]` can be layered on later.
+        # Anchored to end-of-line so `# noprim: ignore[NOPRIM002]` stays free for later.
+        # Searched, not matched, so it can stack after another tool's suppression.
         pattern = re.compile(r"#\s*noprim:\s*ignore\s*$")
         tokens = tokenize.generate_tokens(io.StringIO(source.root).readline)
         return cls(
             frozenset(
                 Arr(tokens)
                 .filter(lambda token: token.type == tokenize.COMMENT)
-                .filter(lambda token: pattern.match(token.string) is not None)
+                .filter(lambda token: pattern.search(token.string) is not None)
                 .map(lambda token: token.start[0])
             )
         )

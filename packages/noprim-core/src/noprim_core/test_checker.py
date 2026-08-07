@@ -155,7 +155,9 @@ def test_uses_configured_deny_list() -> None:
             "def f(  # noprim: ignore\n    x: str,  # noprim: ignore\n) -> str: ...\n",
             ["f"],
         ),
+        ("def f(x: str) -> None: ...  # type: ignore  # noprim: ignore\n", []),
         ("def f(x: str) -> None: ...  # noprim: ignore[NOPRIM002]\n", ["f.x"]),
+        ("def f(x: str) -> None: ...  # noprim: ignore  # legacy\n", ["f.x"]),
         ("def f(x: str) -> None: ...  # noqa\n", ["f.x"]),
     ],
 )
