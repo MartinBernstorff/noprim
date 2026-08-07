@@ -6,7 +6,14 @@ from typing import Annotated
 import typer
 from iterpy import Arr
 
-from noprim_core import Filename, SourceCode, Violation, check_source
+from noprim_core import (
+    CheckConfig,
+    Filename,
+    SourceCode,
+    Surface,
+    Violation,
+    check_source,
+)
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -18,8 +25,18 @@ def cli() -> None:
     """Find function parameters annotated with primitive types."""
 
 
-def _check_file(path: Path) -> Arr[Violation]:
-    return check_source(SourceCode(path.read_text()), Filename(str(path)))
+def _check_file(path: Path, config: CheckConfig) -> Arr[Violation]:
+    return check_source(SourceCode(path.read_text()), Filename(str(path)), config)
+
+
+def _verb(surface: Surface) -> str:
+    match surface:
+        case Surface.PARAMETER:
+            return "takes"
+        case Surface.RETURN:
+            return "returns"
+        case Surface.ATTRIBUTE:
+            return "holds"
 
 
 @app.command()
@@ -41,12 +58,12 @@ def check(
     )
     log.info("Checking %d file(s)", len(files))
 
-    violations = Arr(files).map(_check_file).flatten().to_list()
+    config = CheckConfig()
+    violations = Arr(files).map(lambda p: _check_file(p, config)).flatten().to_list()
     for violation in violations:
         typer.echo(
-            f"{violation.filename}:{violation.line}: "
-            f"{violation.function}({violation.parameter}: {violation.annotation}) "
-            f"takes a primitive"
+            f"{violation.filename}:{violation.line}: {violation.qualname} "
+            f"{_verb(violation.surface)} a primitive '{violation.annotation}'"
         )
 
     if len(violations) > 0:
