@@ -1,16 +1,7 @@
+# Not a distribution; the root pyproject.toml builds the only wheel. This
+# manifest exists so `tach check-external` can enforce per-module dependencies.
 [project]
 name = "noprim-cli"
 version = "0.0.0"
 requires-python = ">=3.13"
-dependencies = ["noprim-core", "noprim-io", "typer>=0.15", "pydantic>=2.11"]
-
-[project.scripts]
-noprim = "noprim_cli.main:app"
-
-[build-system]
-requires = ["uv_build>=0.11"]
-build-backend = "uv_build"
-
-[tool.uv.sources]
-noprim-core = { workspace = true }
-noprim-io = { workspace = true }
+dependencies = ["typer>=0.15", "pydantic>=2.11"]

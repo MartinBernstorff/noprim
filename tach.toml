@@ -2,8 +2,10 @@ source_roots = ["packages/noprim-core/src", "packages/noprim-io/src", "packages/
 forbid_circular_dependencies = true
 
 # pytest is a workspace-level dev dependency, not a dependency of any package.
+# The noprim_* modules ship in one wheel, so they are never external to each
+# other; their direction is enforced by the depends_on edges below.
 [external]
-exclude = ["pytest"]
+exclude = ["pytest", "noprim_core", "noprim_io", "noprim_cli"]
 
 [[modules]]
 path = "noprim_core"

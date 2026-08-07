@@ -4,10 +4,10 @@ requires-python = ">=3.13"
 
 [manifest]
 members = [
+    "noprim",
     "noprim-cli",
     "noprim-core",
     "noprim-io",
-    "noprim-workspace",
 ]
 
 [[package]]
@@ -222,20 +222,61 @@ wheels = [
 ]
 
 [[package]]
+name = "noprim"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "iterpy" },
+    { name = "pathspec" },
+    { name = "pydantic" },
+    { name = "typer" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "actionlint-py" },
+    { name = "lefthook" },
+    { name = "pyrefly" },
+    { name = "pytest" },
+    { name = "pytest-randomly" },
+    { name = "pytest-testmon" },
+    { name = "pytest-xdist" },
+    { name = "ruff" },
+    { name = "tach" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "iterpy", specifier = ">=1.4" },
+    { name = "pathspec", specifier = ">=0.12" },
+    { name = "pydantic", specifier = ">=2.11" },
+    { name = "typer", specifier = ">=0.15" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "actionlint-py", specifier = ">=1.7" },
+    { name = "lefthook", specifier = ">=1.13" },
+    { name = "pyrefly", specifier = ">=0.42" },
+    { name = "pytest", specifier = ">=9" },
+    { name = "pytest-randomly", specifier = ">=4" },
+    { name = "pytest-testmon", specifier = ">=2" },
+    { name = "pytest-xdist", specifier = ">=3" },
+    { name = "ruff", specifier = ">=0.14" },
+    { name = "tach", specifier = ">=0.30" },
+]
+
+[[package]]
 name = "noprim-cli"
 version = "0.0.0"
-source = { editable = "packages/noprim-cli" }
+source = { virtual = "packages/noprim-cli" }
 dependencies = [
-    { name = "noprim-core" },
-    { name = "noprim-io" },
     { name = "pydantic" },
     { name = "typer" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "noprim-core", editable = "packages/noprim-core" },
-    { name = "noprim-io", editable = "packages/noprim-io" },
     { name = "pydantic", specifier = ">=2.11" },
     { name = "typer", specifier = ">=0.15" },
 ]
@@ -243,7 +284,7 @@ requires-dist = [
 [[package]]
 name = "noprim-core"
 version = "0.0.0"
-source = { editable = "packages/noprim-core" }
+source = { virtual = "packages/noprim-core" }
 dependencies = [
     { name = "iterpy" },
     { name = "pydantic" },
@@ -258,10 +299,9 @@ requires-dist = [
 [[package]]
 name = "noprim-io"
 version = "0.0.0"
-source = { editable = "packages/noprim-io" }
+source = { virtual = "packages/noprim-io" }
 dependencies = [
     { name = "iterpy" },
-    { name = "noprim-core" },
     { name = "pathspec" },
     { name = "pydantic" },
 ]
@@ -269,48 +309,8 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "iterpy", specifier = ">=1.4" },
-    { name = "noprim-core", editable = "packages/noprim-core" },
     { name = "pathspec", specifier = ">=0.12" },
     { name = "pydantic", specifier = ">=2" },
-]
-
-[[package]]
-name = "noprim-workspace"
-version = "0.0.0"
-source = { virtual = "." }
-
-[package.dev-dependencies]
-dev = [
-    { name = "actionlint-py" },
-    { name = "lefthook" },
-    { name = "noprim-cli" },
-    { name = "noprim-core" },
-    { name = "noprim-io" },
-    { name = "pyrefly" },
-    { name = "pytest" },
-    { name = "pytest-randomly" },
-    { name = "pytest-testmon" },
-    { name = "pytest-xdist" },
-    { name = "ruff" },
-    { name = "tach" },
-]
-
-[package.metadata]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "actionlint-py", specifier = ">=1.7" },
-    { name = "lefthook", specifier = ">=1.13" },
-    { name = "noprim-cli", editable = "packages/noprim-cli" },
-    { name = "noprim-core", editable = "packages/noprim-core" },
-    { name = "noprim-io", editable = "packages/noprim-io" },
-    { name = "pyrefly", specifier = ">=0.42" },
-    { name = "pytest", specifier = ">=9" },
-    { name = "pytest-randomly", specifier = ">=4" },
-    { name = "pytest-testmon", specifier = ">=2" },
-    { name = "pytest-xdist", specifier = ">=3" },
-    { name = "ruff", specifier = ">=0.14" },
-    { name = "tach", specifier = ">=0.30" },
 ]
 
 [[package]]

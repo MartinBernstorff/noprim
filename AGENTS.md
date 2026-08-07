@@ -10,6 +10,10 @@ CLI that lints Python for primitive-typed function parameters.
 
 Dependencies point one way: `noprim-core` <- `noprim-io` <- `noprim-cli`. Enforced by `tach` (`moon run :modularity`).
 
+Three modules, **one distribution**. The root `pyproject.toml` is the only publishable package (`noprim`); it owns the `noprim` script and vendors all three module dirs into a single wheel. It uses hatchling rather than `uv_build` because `uv_build`'s `module-root` is one directory and cannot reach across `packages/*`.
+
+The per-package `pyproject.toml` files are **not** distributions — they have no `[build-system]` and are never built. They exist so `tach check-external` can enforce per-module external dependencies, which is what keeps `typer` out of `noprim-core`. Add a third-party dependency to both the module's manifest and the root's, or `moon run root:smoke` will fail.
+
 ## Python
 
 - **Never take primitives as function parameters.** Wrap them in a Pydantic `RootModel` — a `str` says nothing about what it is; `UserId` does. This is what the project lints for, so dogfood it.
@@ -33,6 +37,7 @@ Always run tasks through moon, never the tool directly: `moon run :test`, not `p
 | `moon run :typecheck` | pyrefly |
 | `moon run :modularity` | tach check + tach check-external |
 | `moon run :actionlint` | actionlint |
+| `moon run root:smoke` | builds the wheel, installs it into a clean venv, runs it |
 
 ## Tooling
 

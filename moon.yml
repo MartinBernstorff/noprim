@@ -29,3 +29,30 @@ tasks:
     script: 'uv run actionlint'
     inputs:
       - '@group(workflows)'
+
+  # The dev venv has every dependency installed, so only a clean venv catches a
+  # dependency the root manifest forgot to declare.
+  smoke:
+    script: |
+      set -euo pipefail
+      tmp="$(mktemp -d)"
+      trap 'rm -rf "$tmp"' EXIT
+      uv build --wheel --out-dir "$tmp/dist"
+      wheel="$(echo "$tmp"/dist/*.whl)"
+      printf 'def clean() -> None:\n    return None\n' > "$tmp/clean.py"
+      printf 'def dirty(value: str) -> None:\n    return None\n' > "$tmp/dirty.py"
+      uv venv "$tmp/venv"
+      uv pip install --python "$tmp/venv" "$wheel"
+      # An absolute path, because `uvx` and `uv run --with` both fall back to
+      # PATH and would silently run the dev venv's noprim instead of the wheel's.
+      bin="$tmp/venv/bin/noprim"
+      test -x "$bin" || { echo "smoke: wheel exposes no noprim executable"; exit 1; }
+      check() { "$bin" check "$1"; }
+      check "$tmp/clean.py" || { echo "smoke: clean fixture should exit 0"; exit 1; }
+      if check "$tmp/dirty.py"; then
+        echo "smoke: violating fixture should exit non-zero"
+        exit 1
+      fi
+    inputs:
+      - '@group(sources)'
+      - '@group(manifests)'
