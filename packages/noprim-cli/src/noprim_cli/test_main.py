@@ -142,6 +142,15 @@ def test_undecodable_file_exits_nonzero_with_an_error(tmp_path: Path) -> None:
     assert "decode error: " in result.stdout
 
 
+def test_summary_counts_unreadable_files_apart_from_violations(tmp_path: Path) -> None:
+    _ = (tmp_path / "broken.py").write_text("def f(a: int -> None:\n")
+    _ = (tmp_path / "bad.py").write_text("def g(b: int) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", str(tmp_path)])
+
+    assert result.stderr.rstrip().endswith(" - found 1 violation, 1 error")
+
+
 @pytest.mark.parametrize(
     ("seconds", "expected"),
     [

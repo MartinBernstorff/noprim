@@ -59,6 +59,17 @@ def _message(violation: Violation) -> str:
             return f'attribute "{name}" is annotated "{violation.annotation}"'
 
 
+def _found(report: CheckReport) -> str:
+    violations = (
+        f"found {_plural(Count(len(report.violations)), Noun('violation'))}"
+        if len(report.violations) > 0
+        else "no violations"
+    )
+    if len(report.errors) == 0:
+        return violations
+    return f"{violations}, {_plural(Count(len(report.errors)), Noun('error'))}"
+
+
 def _diagnostics(report: CheckReport) -> list[str]:
     located = sorted(
         [(v.filename, v.line, v.column, _message(v)) for v in report.violations]
@@ -108,14 +119,9 @@ def check(
         typer.echo(line)
 
     if not quiet:
-        found = (
-            f"found {_plural(Count(len(diagnostics)), Noun('violation'))}"
-            if len(diagnostics) > 0
-            else "no violations"
-        )
         typer.echo(
             f"Checked {_plural(Count(report.files_checked), Noun('file'))} "
-            f"in {pretty_duration(elapsed)} - {found}",
+            f"in {pretty_duration(elapsed)} - {_found(report)}",
             err=True,
         )
 
