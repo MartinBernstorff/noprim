@@ -8,7 +8,7 @@ dependencies = ["noprim-core", "typer>=0.15", "iterpy>=1.4"]
 noprim = "noprim_cli.main:app"
 
 [build-system]
-requires = ["uv_build>=0.11"]
+requires = ["uv_build>=0.12.1"]
 build-backend = "uv_build"
 
 [tool.uv.sources]
