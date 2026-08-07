@@ -5,15 +5,38 @@ from typing import Annotated
 
 import typer
 from iterpy import Arr
+from pydantic import RootModel
 
 from noprim_core import (
     CheckConfig,
+    DeniedTypes,
     Filename,
     SourceCode,
     Surface,
     Violation,
     check_source,
 )
+
+
+class AllowedNames(RootModel[tuple[str, ...]]):
+    pass
+
+
+class DeniedNames(RootModel[tuple[str, ...]]):
+    pass
+
+
+class AllowedAndDeniedError(typer.BadParameter):
+    def __init__(self, names: AllowedNames) -> None:
+        super().__init__(f"passed to both --allow and --deny: {', '.join(names.root)}")
+
+
+class NotOnDenyListError(typer.BadParameter):
+    def __init__(self, names: AllowedNames) -> None:
+        super().__init__(
+            f"--allow of a name that is not on the deny-list: {', '.join(names.root)}"
+        )
+
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -39,9 +62,27 @@ def _verb(surface: Surface) -> str:
             return "holds"
 
 
+def _resolve_config(allow: AllowedNames, deny: DeniedNames) -> CheckConfig:
+    default = DeniedTypes.default().root
+    conflicting = sorted(set(allow.root) & set(deny.root))
+    if len(conflicting) > 0:
+        raise AllowedAndDeniedError(AllowedNames(tuple(conflicting)))
+    unknown = sorted(set(allow.root) - default)
+    if len(unknown) > 0:
+        raise NotOnDenyListError(AllowedNames(tuple(unknown)))
+    return CheckConfig(denied=DeniedTypes((default - set(allow.root)) | set(deny.root)))
+
+
 @app.command()
 def check(
     paths: Annotated[list[Path], typer.Argument(help="Files or directories to check.")],
+    allow: Annotated[
+        list[str] | None,
+        typer.Option("--allow", help="Remove a type from the deny-list."),
+    ] = None,
+    deny: Annotated[
+        list[str] | None, typer.Option("--deny", help="Add a type to the deny-list.")
+    ] = None,
     quiet: Annotated[
         bool, typer.Option("--quiet", "-q", help="Only log errors.")
     ] = False,
@@ -58,7 +99,10 @@ def check(
     )
     log.info("Checking %d file(s)", len(files))
 
-    config = CheckConfig()
+    config = _resolve_config(
+        AllowedNames(tuple(allow if allow is not None else ())),
+        DeniedNames(tuple(deny if deny is not None else ())),
+    )
     violations = Arr(files).map(lambda p: _check_file(p, config)).flatten().to_list()
     for violation in violations:
         typer.echo(

@@ -228,6 +228,7 @@ source = { editable = "packages/noprim-cli" }
 dependencies = [
     { name = "iterpy" },
     { name = "noprim-core" },
+    { name = "pydantic" },
     { name = "typer" },
 ]
 
@@ -235,6 +236,7 @@ dependencies = [
 requires-dist = [
     { name = "iterpy", specifier = ">=1.4" },
     { name = "noprim-core", editable = "packages/noprim-core" },
+    { name = "pydantic", specifier = ">=2.11" },
     { name = "typer", specifier = ">=0.15" },
 ]
 
