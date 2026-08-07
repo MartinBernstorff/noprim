@@ -67,11 +67,16 @@ class Surface(StrEnum):
     ATTRIBUTE = "attribute"
 
 
+class AnnotationText(RootModel[str]):
+    pass
+
+
 class Site(BaseModel):
     line: int
     surface: Surface
     qualname: str
     annotation: str
+    names: frozenset[str]
 
 
 class Violation(BaseModel):
@@ -99,19 +104,50 @@ class IgnoredLines(RootModel[frozenset[int]]):
         )
 
 
-def _annotation_name(annotation: ast.expr) -> str:
-    match annotation:
-        case ast.Name(id=name):
+Function = ast.FunctionDef | ast.AsyncFunctionDef
+
+
+class SymbolName(RootModel[str]):
+    pass
+
+
+def _head_name(expression: ast.expr) -> str:
+    match expression:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
             return name
-        case ast.Attribute(attr=name):
-            return name
-        case ast.Subscript(value=value, slice=inner) if (
-            _annotation_name(value) == "ClassVar"
-        ):
-            return _annotation_name(inner)
+        case ast.Subscript(value=value):
+            return _head_name(value)
         case _:
-            # Unresolvable annotations get "", which no deny-list entry can match.
+            # Unresolvable expressions get "", which no deny-list entry can match.
             return ""
+
+
+def _mentions(expressions: Arr[ast.expr], symbol: SymbolName) -> bool:
+    return expressions.filter(lambda e: _head_name(e) == symbol.root).to_list() != []
+
+
+def _parsed_names(text: AnnotationText) -> frozenset[str]:
+    try:
+        return _annotation_names(ast.parse(text.root, mode="eval").body)
+    except SyntaxError:
+        return frozenset()
+
+
+def _annotation_names(annotation: ast.expr) -> frozenset[str]:
+    match annotation:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return frozenset({name})
+        case ast.Subscript(value=value, slice=inner):
+            # Literal's arguments are values, not types.
+            if _head_name(value) == "Literal":
+                return frozenset()
+            return _annotation_names(inner)
+        case ast.Tuple(elts=elts) | ast.List(elts=elts):
+            return frozenset().union(*Arr(elts).map(_annotation_names))
+        case ast.Constant(value=str() as text):
+            return _parsed_names(AnnotationText(text))
+        case _:
+            return frozenset()
 
 
 def _site(annotation: ast.expr, surface: Surface, qualname: Qualname) -> Site:
@@ -119,11 +155,12 @@ def _site(annotation: ast.expr, surface: Surface, qualname: Qualname) -> Site:
         line=annotation.lineno,
         surface=surface,
         qualname=qualname.root,
-        annotation=_annotation_name(annotation),
+        annotation=ast.unparse(annotation),
+        names=_annotation_names(annotation),
     )
 
 
-def _parameters(function: ast.FunctionDef | ast.AsyncFunctionDef) -> Arr[ast.arg]:
+def _parameters(function: Function) -> Arr[ast.arg]:
     arguments = function.args
     return Arr(
         [
@@ -133,13 +170,39 @@ def _parameters(function: ast.FunctionDef | ast.AsyncFunctionDef) -> Arr[ast.arg
             *([arguments.vararg] if arguments.vararg is not None else []),
             *([arguments.kwarg] if arguments.kwarg is not None else []),
         ]
+    ).filter(lambda arg: arg.arg not in {"self", "cls"})
+
+
+class OverloadedNames(RootModel[frozenset[str]]):
+    pass
+
+
+def _decorated_as_overload(function: Function) -> bool:
+    return _mentions(Arr(function.decorator_list), SymbolName("overload"))
+
+
+def _is_dunder(function: Function) -> bool:
+    return function.name.startswith("__") and function.name.endswith("__")
+
+
+def _has_exempt_signature(function: Function, overloaded: OverloadedNames) -> bool:
+    is_overload_implementation = (
+        function.name in overloaded.root and not _decorated_as_overload(function)
     )
+    return _is_dunder(function) or is_overload_implementation
+
+
+def _subclasses_root_model(class_def: ast.ClassDef) -> bool:
+    return _mentions(Arr(class_def.bases), SymbolName("RootModel"))
 
 
 def _function_sites(
-    function: ast.FunctionDef | ast.AsyncFunctionDef, scope: Qualname
+    function: Function, scope: Qualname, overloaded: OverloadedNames
 ) -> Arr[Site]:
     qualname = scope.child(Qualname(function.name))
+    if _has_exempt_signature(function, overloaded):
+        return _sites_in(function.body, qualname)
+
     returns = function.returns
     return Arr(
         [
@@ -161,6 +224,9 @@ def _function_sites(
 
 
 def _class_sites(class_def: ast.ClassDef, scope: Qualname) -> Arr[Site]:
+    if _subclasses_root_model(class_def):
+        return Arr([])
+
     qualname = scope.child(Qualname(class_def.name))
     return Arr(
         [
@@ -178,13 +244,24 @@ def _class_sites(class_def: ast.ClassDef, scope: Qualname) -> Arr[Site]:
     )
 
 
+def _overloaded_names(body: list[ast.stmt]) -> OverloadedNames:
+    return OverloadedNames(
+        frozenset(
+            node.name
+            for node in body
+            if isinstance(node, Function) and _decorated_as_overload(node)
+        )
+    )
+
+
 def _sites_in(body: list[ast.stmt], scope: Qualname) -> Arr[Site]:
+    overloaded = _overloaded_names(body)
     return (
         Arr(body)
         .map(
             lambda node: (
-                _function_sites(node, scope)
-                if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+                _function_sites(node, scope, overloaded)
+                if isinstance(node, Function)
                 else _class_sites(node, scope)
                 if isinstance(node, ast.ClassDef)
                 else Arr[Site]([])
@@ -201,7 +278,7 @@ def check_source(
     ignored = IgnoredLines.parse(source)
     return (
         _sites_in(tree.body, Qualname(""))
-        .filter(lambda site: site.annotation in config.denied.root)
+        .filter(lambda site: len(site.names & config.denied.root) > 0)
         .filter(lambda site: site.line not in ignored.root)
         .map(
             lambda site: Violation(
