@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,12 @@ from typer.testing import CliRunner
 from noprim_cli.main import app
 
 runner = CliRunner()
+
+
+def _plain(output: str) -> str:
+    # Rich colours and wraps errors, splitting "--allow" across escapes and lines.
+    stripped = re.sub(r"\x1b\[[0-9;]*m", "", output).replace("│", " ")
+    return " ".join(stripped.split())
 
 
 def test_exits_nonzero_on_violation(tmp_path: Path) -> None:
@@ -67,11 +74,8 @@ def test_name_in_both_flags_exits_two(tmp_path: Path) -> None:
         app, ["check", "--allow", "int", "--deny", "int", str(target)]
     )
 
-    # Rich wraps the message at the terminal width, so assert on unbreakable tokens.
     assert result.exit_code == 2
-    assert "int" in result.output
-    assert "--allow" in result.output
-    assert "--deny" in result.output
+    assert "passed to both --allow and --deny: int" in _plain(result.output)
 
 
 def test_allow_of_unknown_name_exits_two(tmp_path: Path) -> None:
@@ -81,8 +85,9 @@ def test_allow_of_unknown_name_exits_two(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", "--allow", "itn", str(target)])
 
     assert result.exit_code == 2
-    assert "deny-list" in result.output
-    assert "itn" in result.output
+    assert "--allow of a name that is not on the deny-list: itn" in _plain(
+        result.output
+    )
 
 
 def test_flags_are_repeatable(tmp_path: Path) -> None:
@@ -119,7 +124,7 @@ def test_empty_name_exits_two(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", "--deny", "", str(target)])
 
     assert result.exit_code == 2
-    assert "empty" in result.output
+    assert "got an empty one" in _plain(result.output)
 
 
 def test_invalid_flags_fail_before_walking_paths(
