@@ -38,7 +38,8 @@ tasks:
       tmp="$(mktemp -d)"
       trap 'rm -rf "$tmp"' EXIT
       uv build --wheel --out-dir "$tmp/dist"
-      wheel="$(echo "$tmp"/dist/*.whl)"
+      wheel="$(find "$tmp/dist" -name '*.whl')"
+      test -f "$wheel" || { echo "smoke: expected exactly one wheel"; exit 1; }
       printf 'def clean() -> None:\n    return None\n' > "$tmp/clean.py"
       printf 'def dirty(value: str) -> None:\n    return None\n' > "$tmp/dirty.py"
       uv venv "$tmp/venv"

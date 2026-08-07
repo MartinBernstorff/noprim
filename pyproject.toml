@@ -24,6 +24,8 @@ packages = [
     "packages/noprim-io/src/noprim_io",
     "packages/noprim-cli/src/noprim_cli",
 ]
+# Tests live beside the code, so they would otherwise ship to every user.
+exclude = ["test_*.py"]
 
 [tool.uv.workspace]
 members = ["packages/*"]
