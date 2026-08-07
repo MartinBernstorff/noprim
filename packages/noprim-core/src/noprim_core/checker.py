@@ -73,6 +73,7 @@ class AnnotationText(RootModel[str]):
 
 class Site(BaseModel):
     line: int
+    column: int
     surface: Surface
     qualname: str
     annotation: str
@@ -82,6 +83,7 @@ class Site(BaseModel):
 class Violation(BaseModel):
     filename: str
     line: int
+    column: int
     surface: Surface
     qualname: str
     annotation: str
@@ -153,6 +155,7 @@ def _annotation_names(annotation: ast.expr) -> frozenset[str]:
 def _site(annotation: ast.expr, surface: Surface, qualname: Qualname) -> Site:
     return Site(
         line=annotation.lineno,
+        column=annotation.col_offset + 1,
         surface=surface,
         qualname=qualname.root,
         annotation=ast.unparse(annotation),
@@ -284,6 +287,7 @@ def check_source(
             lambda site: Violation(
                 filename=filename.root,
                 line=site.line,
+                column=site.column,
                 surface=site.surface,
                 qualname=site.qualname,
                 annotation=site.annotation,

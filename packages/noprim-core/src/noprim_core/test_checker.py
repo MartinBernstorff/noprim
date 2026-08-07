@@ -27,6 +27,11 @@ def test_flags_primitive_parameter() -> None:
     assert violations[0].surface == Surface.PARAMETER
 
 
+def test_locates_violations_at_the_annotation() -> None:
+    violations = _check("def greet(name: str) -> bool: ...\n")
+    assert [(v.line, v.column) for v in violations] == [(1, 17), (1, 25)]
+
+
 def test_ignores_non_primitive_parameter() -> None:
     assert list(_check("def greet(name: Name) -> None: ...\n")) == []
 
