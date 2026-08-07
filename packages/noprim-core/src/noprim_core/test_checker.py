@@ -52,19 +52,19 @@ def test_qualifies_method_surfaces_with_their_class() -> None:
 
 
 @pytest.mark.parametrize(
-    ("base", "member"),
+    ("base", "annotation"),
     [
-        ("", "count: int"),
-        ("", "count: ClassVar[int]"),
-        ("TypedDict", "count: int"),
-        ("NamedTuple", "count: int"),
-        ("Protocol", "count: int"),
+        ("", "int"),
+        ("", "ClassVar[int]"),
+        ("TypedDict", "int"),
+        ("NamedTuple", "int"),
+        ("Protocol", "int"),
     ],
 )
-def test_flags_primitive_class_attribute(base: str, member: str) -> None:
-    violations = _check(f"class Thing({base}):\n    {member}\n")
+def test_flags_primitive_class_attribute(base: str, annotation: str) -> None:
+    violations = _check(f"class Thing({base}):\n    count: {annotation}\n")
     assert [(v.qualname, v.surface, v.annotation) for v in violations] == [
-        ("Thing.count", Surface.ATTRIBUTE, "int")
+        ("Thing.count", Surface.ATTRIBUTE, annotation)
     ]
 
 
@@ -116,7 +116,7 @@ def test_default_deny_list(annotation: str) -> None:
 @pytest.mark.parametrize("annotation", ["datetime.datetime", "dt.datetime"])
 def test_matches_on_last_dotted_segment(annotation: str) -> None:
     violations = _check(f"def f(x: {annotation}) -> None: ...\n")
-    assert [v.annotation for v in violations] == ["datetime"]
+    assert [v.annotation for v in violations] == [annotation]
 
 
 @pytest.mark.parametrize(
@@ -133,6 +133,73 @@ def test_matches_on_last_dotted_segment(annotation: str) -> None:
 )
 def test_passes_clean_annotations(source: str) -> None:
     assert list(_check(source)) == []
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "list[str]",
+        "dict[str, UserId]",
+        "Callable[[Event], str]",
+        "Annotated[str, Field(gt=0)]",
+        "MyGeneric[str]",
+        "list[list[dict[Name, str]]]",
+    ],
+)
+def test_flags_nested_primitive_once_with_full_text(annotation: str) -> None:
+    violations = _check(f"def f(x: {annotation}) -> None: ...\n")
+    assert [(v.qualname, v.annotation) for v in violations] == [("f.x", annotation)]
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    ["Literal['a', 'b']", "typing.Literal[1, 2]", "dict[Name, Literal['a']]"],
+)
+def test_ignores_literal_arguments(annotation: str) -> None:
+    assert list(_check(f"def f(x: {annotation}) -> None: ...\n")) == []
+
+
+@pytest.mark.parametrize("annotation", ['"str"', 'list["str"]', '"list[str]"'])
+def test_parses_string_annotations(annotation: str) -> None:
+    violations = _check(f"def f(x: {annotation}) -> None: ...\n")
+    assert [v.qualname for v in violations] == ["f.x"]
+
+
+@pytest.mark.parametrize("annotation", ['"not python!!"', '""', '"Name"'])
+def test_skips_unparseable_string_annotations(annotation: str) -> None:
+    assert list(_check(f"def f(x: {annotation}) -> None: ...\n")) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'class Thing:\n    def m(self: "Thing") -> None: ...\n',
+        'class Thing:\n    @classmethod\n    def m(cls: "type[Thing]") -> None: ...\n',
+        "class Thing:\n    def __init__(self, x: int) -> None: ...\n",
+        "class Thing:\n    def __eq__(self, other: object) -> bool: ...\n",
+        "class Id(RootModel[str]):\n    def get(self, key: int) -> str: ...\n",
+        "class Id(RootModel):\n    root: str\n",
+        'UserId = NewType("UserId", str)\n',
+        'class Thing:\n    UserId = NewType("UserId", str)\n',
+        "@overload\ndef f(x: Name) -> Name: ...\ndef f(x: object) -> object: ...\n",
+    ],
+)
+def test_exempt_surfaces(source: str) -> None:
+    assert list(_check(source)) == []
+
+
+def test_reports_overload_stubs_only() -> None:
+    violations = _check(
+        "@overload\ndef f(x: int) -> str: ...\n"
+        "@overload\ndef f(x: Name) -> Name: ...\n"
+        "def f(x: object) -> object: ...\n"
+    )
+    assert [(v.line, v.annotation) for v in violations] == [(2, "int"), (2, "str")]
+
+
+def test_private_functions_still_report() -> None:
+    violations = _check("def _f(x: int) -> None: ...\n")
+    assert [v.qualname for v in violations] == ["_f.x"]
 
 
 def test_uses_configured_deny_list() -> None:
