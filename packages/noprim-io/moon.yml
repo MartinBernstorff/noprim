@@ -17,7 +17,7 @@ fileGroups:
     - '/uv.lock'
 
 tasks:
-  # No `test` task yet: the package has no tests, and pytest exits 5 on an empty run.
+  # pytest exits 5 on an empty run; add a `test` task alongside the first test.
 
   lint:
     script: 'uv run ruff check .'
