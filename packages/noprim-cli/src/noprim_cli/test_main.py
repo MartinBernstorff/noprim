@@ -45,3 +45,13 @@ def test_quiet_suppresses_progress_logging(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert "Checking" not in result.stdout
+
+
+def test_exits_zero_when_only_violation_is_ignored(tmp_path: Path) -> None:
+    target = tmp_path / "ignored.py"
+    _ = target.write_text("def greet(name: str) -> None: ...  # noprim: ignore\n")
+
+    result = runner.invoke(app, ["check", str(target)])
+
+    assert result.exit_code == 0
+    assert "greet.name" not in result.stdout

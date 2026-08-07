@@ -139,3 +139,27 @@ def test_uses_configured_deny_list() -> None:
     config = CheckConfig(denied=DeniedTypes(frozenset({"Name"})))
     violations = _check("def f(x: Name, y: str) -> None: ...\n", config)
     assert [v.qualname for v in violations] == ["f.x"]
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("def f(x: str) -> None: ...  # noprim: ignore\n", []),
+        ("def f(x: Name) -> str:  # noprim: ignore\n    ...\n", []),
+        ("class Thing:\n    count: int  # noprim: ignore\n", []),
+        (
+            "def f(  # noprim: ignore\n    x: str,\n) -> None: ...\n",
+            ["f.x"],
+        ),
+        (
+            "def f(  # noprim: ignore\n    x: str,  # noprim: ignore\n) -> str: ...\n",
+            ["f"],
+        ),
+        ("def f(x: str) -> None: ...  # noprim: ignore[NOPRIM002]\n", ["f.x"]),
+        ("def f(x: str) -> None: ...  # noqa\n", ["f.x"]),
+    ],
+)
+def test_ignore_comment_suppresses_only_its_own_line(
+    source: str, expected: list[str]
+) -> None:
+    assert [v.qualname for v in _check(source)] == expected

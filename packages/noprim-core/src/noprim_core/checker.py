@@ -1,4 +1,7 @@
 import ast
+import io
+import re
+import tokenize
 from enum import StrEnum
 
 from iterpy import Arr
@@ -77,6 +80,22 @@ class Violation(BaseModel):
     surface: Surface
     qualname: str
     annotation: str
+
+
+class IgnoredLines(RootModel[frozenset[int]]):
+    @classmethod
+    def parse(cls, source: SourceCode) -> "IgnoredLines":
+        # Bare form only, so `# noprim: ignore[NOPRIM002]` can be layered on later.
+        pattern = re.compile(r"#\s*noprim:\s*ignore\s*$")
+        tokens = tokenize.generate_tokens(io.StringIO(source.root).readline)
+        return cls(
+            frozenset(
+                Arr(tokens)
+                .filter(lambda token: token.type == tokenize.COMMENT)
+                .filter(lambda token: pattern.match(token.string) is not None)
+                .map(lambda token: token.start[0])
+            )
+        )
 
 
 def _annotation_name(annotation: ast.expr) -> str:
@@ -178,9 +197,11 @@ def check_source(
     source: SourceCode, filename: Filename, config: CheckConfig
 ) -> Arr[Violation]:
     tree = ast.parse(source.root, filename=filename.root)
+    ignored = IgnoredLines.parse(source)
     return (
         _sites_in(tree.body, Qualname(""))
         .filter(lambda site: site.annotation in config.denied.root)
+        .filter(lambda site: site.line not in ignored.root)
         .map(
             lambda site: Violation(
                 filename=filename.root,
