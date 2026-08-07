@@ -4,16 +4,9 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
-from iterpy import Arr
 
-from noprim_core import (
-    CheckConfig,
-    Filename,
-    SourceCode,
-    Surface,
-    Violation,
-    check_source,
-)
+from noprim_core import Surface
+from noprim_io import CheckPaths, DiscoveryConfig, IgnorePatterns, check_paths
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -23,10 +16,6 @@ log = logging.getLogger("noprim")
 @app.callback()
 def cli() -> None:
     """Find function parameters annotated with primitive types."""
-
-
-def _check_file(path: Path, config: CheckConfig) -> Arr[Violation]:
-    return check_source(SourceCode(path.read_text()), Filename(str(path)), config)
 
 
 def _verb(surface: Surface) -> str:
@@ -41,7 +30,13 @@ def _verb(surface: Surface) -> str:
 
 @app.command()
 def check(
-    paths: Annotated[list[Path], typer.Argument(help="Files or directories to check.")],
+    paths: Annotated[
+        list[Path] | None, typer.Argument(help="Files or directories to check.")
+    ] = None,
+    exclude: Annotated[
+        list[str] | None,
+        typer.Option("--exclude", help="Glob to skip while walking. Repeatable."),
+    ] = None,
     quiet: Annotated[
         bool, typer.Option("--quiet", "-q", help="Only log errors.")
     ] = False,
@@ -50,22 +45,23 @@ def check(
         level=logging.ERROR if quiet else logging.INFO, format="%(message)s"
     )
 
-    files = (
-        Arr(paths)
-        .map(lambda p: list(p.rglob("*.py")) if p.is_dir() else [p])
-        .flatten()
-        .to_list()
+    report = check_paths(
+        CheckPaths(tuple(paths) if paths is not None else (Path.cwd(),)),
+        DiscoveryConfig(
+            excludes=IgnorePatterns(tuple(exclude if exclude is not None else ()))
+        ),
     )
-    log.info("Checking %d file(s)", len(files))
 
-    config = CheckConfig()
-    violations = Arr(files).map(lambda p: _check_file(p, config)).flatten().to_list()
-    for violation in violations:
+    log.info("Checked %d file(s)", report.files_checked)
+
+    for violation in report.violations:
         typer.echo(
             f"{violation.filename}:{violation.line}: {violation.qualname} "
             f"{_verb(violation.surface)} a primitive '{violation.annotation}'"
         )
+    for error in report.errors:
+        typer.echo(f"error: {error.filename}: {error.message}")
 
-    if len(violations) > 0:
+    if len(report.violations) > 0 or len(report.errors) > 0:
         sys.exit(1)
     log.info("No primitive parameters found")

@@ -2,8 +2,11 @@
 name = "noprim-io"
 version = "0.0.0"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = ["noprim-core", "pydantic>=2", "iterpy>=1.4", "pathspec>=0.12"]
 
 [build-system]
 requires = ["uv_build>=0.11"]
 build-backend = "uv_build"
+
+[tool.uv.sources]
+noprim-core = { workspace = true }
