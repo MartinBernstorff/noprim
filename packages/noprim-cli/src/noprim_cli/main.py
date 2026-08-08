@@ -155,39 +155,39 @@ def _settings(arguments: Arguments) -> LoadedSettings:
 # would be parsed as one opaque argument, losing the flag names and the arity.
 @app.command()
 def check(  # noqa: PLR0913, PLR0917
-    paths: Annotated[
+    paths: Annotated[  # noprim: ignore
         list[Path] | None, typer.Argument(help="Files or directories to check.")
     ] = None,
-    allow: Annotated[
+    allow: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option("--allow", help="Remove a type from the deny-list. Repeatable."),
     ] = None,
-    deny: Annotated[
+    deny: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option("--deny", help="Add a type to the deny-list. Repeatable."),
     ] = None,
-    ignore_names: Annotated[
+    ignore_names: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option(
             "--ignore-names",
             help="Skip parameters and attributes matching this glob. Repeatable.",
         ),
     ] = None,
-    ignore_param_names: Annotated[
+    ignore_param_names: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option(
             "--ignore-param-names",
             help="Skip parameters matching this glob. Repeatable.",
         ),
     ] = None,
-    ignore_attribute_names: Annotated[
+    ignore_attribute_names: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option(
             "--ignore-attribute-names",
             help="Skip attributes matching this glob. Repeatable.",
         ),
     ] = None,
-    ignore_inner_classes: Annotated[
+    ignore_inner_classes: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option(
             "--ignore-inner-classes",
@@ -198,10 +198,10 @@ def check(  # noqa: PLR0913, PLR0917
         bool | None,
         typer.Option(
             "--exempt-typer-args/--no-exempt-typer-args",
-            help="Skip the parameters of a Typer command or callback.",
+            help="Skip bool parameters of a Typer command or callback.",
         ),
     ] = None,
-    exclude: Annotated[
+    exclude: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option("--exclude", help="Glob to skip while walking. Repeatable."),
     ] = None,
@@ -212,7 +212,7 @@ def check(  # noqa: PLR0913, PLR0917
             help="Which rules to start from before select, extend-select and ignore.",
         ),
     ] = None,
-    select: Annotated[
+    select: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option(
             "--select",
@@ -220,20 +220,20 @@ def check(  # noqa: PLR0913, PLR0917
             " Repeatable.",
         ),
     ] = None,
-    extend_select: Annotated[
+    extend_select: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option(
             "--extend-select",
             help="Run these rule codes as well as the selected ones. Repeatable.",
         ),
     ] = None,
-    ignore: Annotated[
+    ignore: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option(
             "--ignore", help="Drop these rule codes from the run. Repeatable."
         ),
     ] = None,
-    baseline: Annotated[
+    baseline: Annotated[  # noprim: ignore
         Path | None,
         typer.Option(
             "--baseline",
@@ -251,7 +251,7 @@ def check(  # noqa: PLR0913, PLR0917
         bool,
         typer.Option("--statistics", help="Print counts instead of one line each."),
     ] = False,
-    group_by: Annotated[
+    group_by: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option(
             "--group-by",

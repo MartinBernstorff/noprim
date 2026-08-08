@@ -86,11 +86,11 @@ Some signatures are not the author's to choose, so noprim does not report them:
   `*_test.py`. pytest decides what a fixture injects and what `parametrize` feeds in,
   so the parameter type is not a free choice. Return types and attributes in those
   files are still checked, as are ordinary helpers that happen to live beside tests.
-- **Parameters of Typer commands**, unless `exempt-typer-args` is turned off. Typer
-  reads the annotations to build the command line, so a wrapped type changes the CLI
-  rather than the code's vocabulary — and a bare `bool` flag cannot be spelled any other
-  way at all, because click decides flag-ness from the annotation being literally
-  `bool`. Matched on the attribute the app object is asked for — `command` or
+- **`bool` parameters of Typer commands**, unless `exempt-typer-args` is turned off.
+  A bare boolean flag has no other spelling: click decides flag-ness from the annotation
+  being literally `bool`, so wrapping it makes `--dry-run` start demanding an argument.
+  Only `bool` — a `str` or a `Path` option has real alternatives, and is reported with
+  them named. Matched on the attribute the app object is asked for — `command` or
   `callback` — so it holds however that object is named, while unrelated names like
   `command_runner` and a bare `@command`, which Typer never spells, stay checked. Return
   types are still checked, as are helpers and nested functions.
@@ -153,16 +153,19 @@ inside a function, is a class you wrote and stays checked. Everything inside a m
 body is skipped, however deeply nested, so the blast radius is whatever you deliberately
 put in there.
 
-Typer commands are exempt for the same reason, and by default. A `str` or a `Path`
-option *can* be avoided — an `enum.Enum` renders natively as `[a|b]`, and
-`typer.Option(parser=...)` takes anything — so a codebase that wants to be pushed toward
-domain types even at the command line can say so:
+A Typer command is the same story told the other way. Its `bool` flags are exempt by
+default, because nothing else can spell them, and every other primitive is reported with
+the way out named:
 
-```
-noprim check --no-exempt-typer-args .
+```console
+$ noprim check cli.py
+cli.py:2:15: NOPRIM001 parameter "env" is annotated "str"; Typer renders an enum.Enum natively, and typer.Option(parser=...) takes any type
 ```
 
-A bare `bool` flag then has no fix, and is what `# noprim: ignore` is for.
+Both fixes are real: an `enum.Enum` renders as `[dev|prod]` in `--help` with no extra
+work, and `typer.Option(parser=...)` takes any type at all. `--no-exempt-typer-args`
+drops the last exemption too, for a codebase that would rather see the `bool` flags and
+suppress them a line at a time.
 
 ## Flags
 
@@ -178,7 +181,7 @@ A bare `bool` flag then has no fix, and is what `# noprim: ignore` is for.
 | `--ignore-param-names GLOB` | Skip parameters matching `GLOB`. Repeatable. |
 | `--ignore-attribute-names GLOB` | Skip attributes matching `GLOB`. Repeatable. |
 | `--ignore-inner-classes GLOB` | Skip the body of a nested class matching `GLOB`. Repeatable. |
-| `--exempt-typer-args` / `--no-exempt-typer-args` | Skip the parameters of a Typer command or callback. On by default. |
+| `--exempt-typer-args` / `--no-exempt-typer-args` | Skip `bool` parameters of a Typer command or callback. On by default. |
 | `--exclude GLOB` | Skip paths while walking. Gitignore syntax, anchored at the config file's directory, or the repo root when there is no config. Repeatable. |
 | `--quiet`, `-q` | Suppress the trailing summary. |
 | `--statistics` | Print counts instead of one line per violation. |

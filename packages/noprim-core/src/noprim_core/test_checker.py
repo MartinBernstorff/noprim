@@ -466,50 +466,68 @@ def test_pytest_parameters_are_suppressed_rather_than_never_found() -> None:
 @pytest.mark.parametrize(
     ("source", "expected"),
     [
-        ("@app.command()\ndef ship(name: str) -> None: ...\n", []),
         ("@app.command()\ndef ship(force: bool = False) -> None: ...\n", []),
         (
-            "@app.command()\ndef ship(name: Annotated[str, typer.Option()]) -> None: ...\n",
+            (
+                "@app.command()\n"
+                "def ship(force: Annotated[bool, typer.Option()] = False) -> None:"
+                " ...\n"
+            ),
             [],
         ),
+        ("@app.command()\ndef ship(force: bool | None = None) -> None: ...\n", []),
         ("@app.callback()\ndef cli(verbose: bool = False) -> None: ...\n", []),
-        ("@cli.command('ship')\ndef ship(name: str) -> None: ...\n", []),
-        ("@command_runner.run()\ndef ship(name: str) -> None: ...\n", ["ship.name"]),
-        ("@command\ndef ship(name: str) -> None: ...\n", ["ship.name"]),
+        ("@cli.command('ship')\ndef ship(force: bool = False) -> None: ...\n", []),
+        ("@app.command()\ndef ship(name: str) -> None: ...\n", ["ship.name"]),
+        (
+            (
+                "@app.command()\n"
+                "def ship(name: Annotated[str, typer.Option()]) -> None: ...\n"
+            ),
+            ["ship.name"],
+        ),
+        ("@app.command()\ndef ship(root: Path) -> None: ...\n", ["ship.root"]),
+        ("@app.command()\ndef ship(flags: list[bool]) -> None: ...\n", []),
+        (
+            "@command_runner.run()\ndef ship(force: bool = False) -> None: ...\n",
+            ["ship.force"],
+        ),
+        ("@command\ndef ship(force: bool = False) -> None: ...\n", ["ship.force"]),
         ("@app.command()\ndef ship() -> str: ...\n", ["ship"]),
         (
             (
-                "@app.command()\ndef ship(name: str) -> None:\n"
-                "    def inner(raw: str) -> None: ...\n"
+                "@app.command()\ndef ship(force: bool = False) -> None:\n"
+                "    def inner(raw: bool) -> None: ...\n"
             ),
             ["ship.inner.raw"],
         ),
-        ("def _helper(name: str) -> None: ...\n", ["_helper.name"]),
+        ("def _helper(force: bool = False) -> None: ...\n", ["_helper.force"]),
     ],
 )
-def test_the_typer_exemption_covers_only_a_command_s_parameters(
+def test_the_typer_exemption_covers_only_a_command_s_bool_parameters(
     source: str, expected: list[str]
 ) -> None:
     assert [v.qualname.root for v in _check(SourceCode(source))] == expected
 
 
-def test_typer_parameters_report_when_the_exemption_is_off() -> None:
+def test_a_typer_bool_reports_when_the_exemption_is_off() -> None:
     config = CheckConfig(
         selection=default_selection(), exempt_typer_args=Verdict(root=False)
     )
     violations = _check(
-        SourceCode("@app.command()\ndef ship(name: str) -> None: ...\n"), config
+        SourceCode("@app.command()\ndef ship(force: bool = False) -> None: ...\n"),
+        config,
     )
-    assert [v.qualname.root for v in violations] == ["ship.name"]
+    assert [v.qualname.root for v in violations] == ["ship.force"]
 
 
 def test_typer_parameters_are_suppressed_rather_than_never_found() -> None:
     outcome = check_source(
-        SourceCode("@app.command()\ndef ship(name: str) -> None: ...\n"),
+        SourceCode("@app.command()\ndef ship(force: bool = False) -> None: ...\n"),
         Filename("a.py"),
         _config(),
     )
 
     assert [(s.violation.qualname.root, str(s.reason)) for s in outcome.suppressed] == [
-        ("ship.name", "typer")
+        ("ship.force", "typer")
     ]

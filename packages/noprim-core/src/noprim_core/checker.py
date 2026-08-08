@@ -262,6 +262,7 @@ def _violations_at(
             surface=site.surface,
             qualname=site.qualname,
             annotation=site.annotation,
+            owner=site.owner,
         )
     )
 
@@ -286,11 +287,13 @@ def _suppressions(
             ),
         ),
         pytest_owned=_owned(sites, lambda site: Verdict(site.owner == Owner.PYTEST)),
+        # Only bool: click decides flag-ness from the annotation being literally bool,
+        # while a str option can still become an enum or a typer.Option(parser=...).
         typer_owned=_owned(
             sites,
             lambda site: config.exempt_typer_args.and_(
                 Verdict(site.owner == Owner.TYPER)
-            ),
+            ).and_(site.names.are_only(SymbolName("bool"))),
         ),
     )
 

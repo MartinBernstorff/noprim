@@ -89,14 +89,19 @@ rule-specific booleans. Anything the author does not choose (dunder methods,
 `RootModel` bodies, overload implementations, `@override` methods) is exempt during the
 walk and never becomes a site.
 
-A Typer command's parameters are the framework's rather than the author's — typer reads
-the annotations to build the command line — so `exempt-typer-args` covers them, on by
-default. It suppresses rather than skips, like pytest ownership, because a config key can
-turn it off. It covers every primitive, not just `bool`, even though only `bool` is
-genuinely forced (click decides flag-ness from the annotation being literally `bool`,
-while a `str` can become an enum or a `parser=`): the flag is what a codebase that wants
-to be pushed toward domain types turns off. Only parameters — a command's return type is
-still the author's.
+A Typer command's `bool` parameters are the framework's rather than the author's — click
+decides flag-ness from the annotation being literally `bool`, so there is no other
+spelling of a bare flag — and `exempt-typer-args` covers them, on by default. It
+suppresses rather than skips, like pytest ownership, because a config key can turn it
+off.
+
+Only `bool`, deliberately. A `str` or `Path` option *can* become an `enum.Enum` or a
+`typer.Option(parser=...)`, so exempting it would wave through a case with a real fix.
+Those report instead, and `PrimitiveParameter.message` names the two alternatives — which
+is why `Violation` carries `owner`: it is the one thing a rule needs from the walk that
+the surface and the annotation do not say. It stays out of the baseline key, so the
+wording can change without invalidating anyone's baseline. Only parameters — a command's
+return type is still the author's.
 
 Unlike `@override` it is matched on the *attribute* rather than the name alone —
 `<anything>.command`, never a bare `@command` — because `command` and `callback` are

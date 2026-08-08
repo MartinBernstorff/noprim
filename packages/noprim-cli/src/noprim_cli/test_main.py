@@ -944,10 +944,10 @@ def test_a_config_key_survives_when_a_different_flag_is_passed(
     ]
 
 
-_COMMAND = "@app.command()\ndef ship(name: str) -> None: ...\n"
+_COMMAND = "@app.command()\ndef ship(force: bool = False) -> None: ...\n"
 
 
-def test_typer_arguments_are_exempt_by_default(tmp_path: Path) -> None:
+def test_a_typer_bool_is_exempt_by_default(tmp_path: Path) -> None:
     target = tmp_path / "cli.py"
     _ = target.write_text(_COMMAND)
 
@@ -958,15 +958,32 @@ def test_typer_arguments_are_exempt_by_default(tmp_path: Path) -> None:
     assert result.stderr.endswith("no violations\n")
 
 
-def test_no_exempt_typer_args_reports_a_command_s_parameters(tmp_path: Path) -> None:
+def test_a_typer_parameter_that_is_not_a_bool_says_what_to_use_instead(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "cli.py"
+    _ = target.write_text("@app.command()\ndef ship(env: str) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", "-q", str(target)])
+
+    assert result.stdout.splitlines() == [
+        (
+            f'{target}:2:15: NOPRIM001 parameter "env" is annotated "str"; Typer'
+            " renders an enum.Enum natively, and typer.Option(parser=...) takes any"
+            " type"
+        )
+    ]
+
+
+def test_no_exempt_typer_args_reports_a_command_s_bool(tmp_path: Path) -> None:
     target = tmp_path / "cli.py"
     _ = target.write_text(_COMMAND)
 
-    result = runner.invoke(app, ["check", "--no-exempt-typer-args", str(target)])
+    result = runner.invoke(app, ["check", "-q", "--no-exempt-typer-args", str(target)])
 
-    assert result.stdout.splitlines()[0] == (
-        f'{target}:2:16: NOPRIM001 parameter "name" is annotated "str"'
-    )
+    assert result.stdout.splitlines() == [
+        f'{target}:2:17: NOPRIM001 parameter "force" is annotated "bool"'
+    ]
 
 
 def test_exempt_typer_args_can_come_from_the_config(
@@ -980,7 +997,7 @@ def test_exempt_typer_args_can_come_from_the_config(
     result = runner.invoke(app, ["check", "-q", "cli.py"])
 
     assert result.stdout.splitlines() == [
-        'cli.py:2:16: NOPRIM001 parameter "name" is annotated "str"'
+        'cli.py:2:17: NOPRIM001 parameter "force" is annotated "bool"'
     ]
 
 
