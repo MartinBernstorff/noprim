@@ -65,29 +65,24 @@ class OverloadedNames(RootModel[frozenset[str]]):
     pass
 
 
-def _decorated_as_overload(function: Function) -> Verdict:
-    return _mentions(Arr(function.decorator_list), SymbolName("overload"))
+def _decorated_with(function: Function, symbol: SymbolName) -> Verdict:
+    return _mentions(Arr(function.decorator_list), symbol)
 
 
 def _is_dunder(function: Function) -> Verdict:
     return Verdict(function.name.startswith("__") and function.name.endswith("__"))
 
 
-def _decorated_as_override(function: Function) -> Verdict:
-    # A supertype dictated this signature, and the type checker verifies the claim.
-    return _mentions(Arr(function.decorator_list), SymbolName("override"))
-
-
 def _has_exempt_signature(function: Function, overloaded: OverloadedNames) -> Verdict:
     is_overload_implementation = Verdict(function.name in overloaded.root).and_(
-        _decorated_as_overload(function).negated
+        _decorated_with(function, SymbolName("overload")).negated
     )
     return Verdict.any(
         Arr(
             [
                 _is_dunder(function),
                 is_overload_implementation,
-                _decorated_as_override(function),
+                _decorated_with(function, SymbolName("override")),
             ]
         )
     )
@@ -95,7 +90,7 @@ def _has_exempt_signature(function: Function, overloaded: OverloadedNames) -> Ve
 
 def _pytest_owns_parameters(function: Function) -> Verdict:
     return Verdict(function.name.startswith("test_")).or_(
-        _mentions(Arr(function.decorator_list), SymbolName("fixture"))
+        _decorated_with(function, SymbolName("fixture"))
     )
 
 
@@ -185,7 +180,8 @@ def _overloaded_names(body: list[ast.stmt]) -> OverloadedNames:
         frozenset(
             node.name
             for node in body
-            if isinstance(node, Function) and _decorated_as_overload(node)
+            if isinstance(node, Function)
+            and _decorated_with(node, SymbolName("overload"))
         )
     )
 

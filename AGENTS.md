@@ -58,11 +58,10 @@ rule-specific booleans. Anything the author does not choose (dunder methods,
 `RootModel` bodies, overload implementations, `@override` methods) is exempt during the
 walk and never becomes a site.
 
-`@override` is matched on the decorator's name only — `override`, `typing.override`,
-`typing_extensions.override` — with no import resolution. It is deliberately the
-exemption rather than a list of method names: a name glob cannot tell a Django
-`Model.save` override from a domain `delete()` that should stay checked, and if the base
-method disappears the type checker errors, so the exemption cannot rot.
+`@override` is the exemption rather than a list of method names: a name glob cannot tell
+a Django `Model.save` override from a domain `delete()` that should stay checked, and if
+the base method disappears the type checker errors, so the exemption cannot rot. It is
+matched on the decorator's name alone, without resolving imports.
 
 `Site.owner` is the one fact on a site that no rule reads: who chose the annotation.
 It is there because the walk is the only place that can see it — pytest ownership is
