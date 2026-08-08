@@ -378,25 +378,3 @@ def write_report(into: EnsuredDir, title: NonBlankString) -> Verdict: ...
 For an existing directory or file, use pydantic's own `DirectoryPath` and `FilePath`
 rather than anything here. `ReplacementTable.default()` is the full map from each denied
 type to what to reach for instead, and every name on the deny-list has an entry.
-
-## Dogfooding
-
-`moon run :noprim` runs this linter over its own source under `--preset all` and with
-no `--allow` flags, as part of the lint chain and the pre-commit hooks. Building it that way surfaced three
-things worth recording:
-
-- **`X | None` was invisible.** The checker matched `Optional[str]` but not the PEP 604
-  spelling, because `ast.BinOp` had no case. Nothing in the repo caught it until the
-  tool was pointed at code that used unions.
-- **Booleans resist wrapping.** `Verdict` is a `RootModel[bool]` with `__bool__`, which
-  pyrefly rejects in both directions: `.filter()` is typed `Callable[[T], bool]` and
-  will not take a `Verdict`-returning predicate, and `preset = "all"` forbids implicit
-  truthiness. Two settings buy the whole pattern back — `implicit-bool = false` in
-  `pyrefly.toml`, and `iterpy>=1.15`, whose `Arr.filter` takes a
-  `Callable[[T], object]` — which is why the repo carries
-  `0`
-  typechecker suppressions.
-- **Frameworks own some signatures.** Typer reads the command's annotations to build
-  the CLI, so `16`
-  annotations in the CLI carry `# noprim: ignore`. pytest's ownership of test
-  signatures was frequent enough to become a rule rather than 40 comments.
