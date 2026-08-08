@@ -4,6 +4,7 @@ from pathlib import Path
 from iterpy import Arr
 from pydantic import BaseModel, RootModel, ValidationError
 
+from noprim_core.annotations import AnnotationText
 from noprim_core.baseline import (
     Baseline,
     BaselineKey,
@@ -12,13 +13,12 @@ from noprim_core.baseline import (
     PrunableFiles,
 )
 from noprim_core.checker import (
-    AnnotationText,
     Filename,
     Qualname,
     Surface,
-    Verdict,
     Violation,
 )
+from noprim_core.verdict import Verdict
 from noprim_io.check import CheckPaths, CheckReport
 from noprim_io.paths import ExistingDirectory, SourceFile, repo_root
 

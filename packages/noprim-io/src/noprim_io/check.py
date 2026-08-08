@@ -10,10 +10,10 @@ from noprim_core.checker import (
     Filename,
     LineNumber,
     SourceCode,
-    Verdict,
     Violation,
     check_source,
 )
+from noprim_core.verdict import Verdict
 from noprim_io.paths import (
     DirectoryEntry,
     ExistingDirectory,
