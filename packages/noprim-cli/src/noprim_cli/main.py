@@ -4,6 +4,7 @@ from tomllib import TOMLDecodeError
 from typing import Annotated, NoReturn
 
 import typer
+from iterpy import Arr
 from pydantic import BaseModel, ValidationError
 
 from noprim_cli.render import (
@@ -16,7 +17,8 @@ from noprim_cli.render import (
     render,
 )
 from noprim_core.baseline import Baseline, BaselineOutcome, apply_baseline
-from noprim_core.checker import IgnoredNames
+from noprim_core.config import IgnoredNames
+from noprim_core.rules.code import Selector, Selectors
 from noprim_core.settings import AllowedNames, DeniedNames, PathPatterns, Settings
 from noprim_core.verdict import Verdict
 from noprim_io.baseline import (
@@ -56,8 +58,9 @@ class Overrides(BaseModel):
     deny: DeniedNames | None
     exclude: PathPatterns | None
     ignore_names: IgnoredNames | None
-    check_predicates: Verdict | None
-    top_types: Verdict | None
+    select: Selectors | None
+    extend_select: Selectors | None
+    ignore: Selectors | None
 
 
 def _overridden(loaded: LoadedSettings, overrides: Overrides) -> LoadedSettings:
@@ -71,6 +74,10 @@ def _overridden(loaded: LoadedSettings, overrides: Overrides) -> LoadedSettings:
             "settings": Settings.model_validate(loaded.settings.model_dump() | given)
         }
     )
+
+
+def _selectors(given: list[str] | None) -> Selectors | None:  # noprim: ignore
+    return None if given is None else Selectors(tuple(Arr(given).map(Selector)))
 
 
 def _settings(overrides: Overrides) -> LoadedSettings:
@@ -107,16 +114,26 @@ def check(  # noqa: PLR0913, PLR0917
         list[str] | None,
         typer.Option("--exclude", help="Glob to skip while walking. Repeatable."),
     ] = None,
-    check_predicates: Annotated[  # noprim: ignore
-        bool | None,
+    select: Annotated[  # noprim: ignore
+        list[str] | None,
         typer.Option(
-            "--check-predicates",
-            help="Report functions returning bool instead of skipping them.",
+            "--select",
+            help="Run these rule codes instead of the defaults. Prefixes count."
+            " Repeatable.",
         ),
     ] = None,
-    top_types: Annotated[  # noprim: ignore
-        bool | None,
-        typer.Option("--top-types", help="Also report Any and object. Off by default."),
+    extend_select: Annotated[  # noprim: ignore
+        list[str] | None,
+        typer.Option(
+            "--extend-select",
+            help="Run these rule codes as well as the selected ones. Repeatable.",
+        ),
+    ] = None,
+    ignore: Annotated[  # noprim: ignore
+        list[str] | None,
+        typer.Option(
+            "--ignore", help="Drop these rule codes from the run. Repeatable."
+        ),
     ] = None,
     baseline: Annotated[  # noprim: ignore
         Path | None,
@@ -145,10 +162,9 @@ def check(  # noqa: PLR0913, PLR0917
                 if ignore_names is not None
                 else None
             ),
-            check_predicates=(
-                Verdict(root=check_predicates) if check_predicates is not None else None
-            ),
-            top_types=Verdict(root=top_types) if top_types is not None else None,
+            select=_selectors(select),
+            extend_select=_selectors(extend_select),
+            ignore=_selectors(ignore),
         )
     )
 
@@ -177,7 +193,9 @@ def check(  # noqa: PLR0913, PLR0917
         _emit(render(RunOutcome(report=report), elapsed, options))
 
     path = BaselinePath(baseline)
-    outcome = _against_baseline(report, CheckPaths(targets), path)
+    outcome = _against_baseline(
+        report, CheckPaths(targets), path, Verdict(root=refresh)
+    )
 
     if refresh or not path.root.exists():
         try:
@@ -202,13 +220,25 @@ def _fail(error: Exception) -> NoReturn:
     raise typer.Exit(2) from error
 
 
+def _existing_baseline(path: BaselinePath, refresh: Verdict) -> Baseline:
+    if not path.root.exists():
+        return Baseline.empty()
+    try:
+        return read_baseline(path)
+    except UnsupportedBaselineVersionError as error:
+        # --write-baseline is the remedy the error names, so it has to survive it.
+        if not (refresh.root and error.outdated.root):
+            raise
+        return Baseline.empty()
+
+
 def _against_baseline(
-    report: CheckReport, targets: CheckPaths, path: BaselinePath
+    report: CheckReport, targets: CheckPaths, path: BaselinePath, refresh: Verdict
 ) -> BaselineOutcome:
     # A baseline path under a directory that does not exist surfaces as
     # ExistingDirectory failing to validate rather than as an OSError.
     try:
-        existing = read_baseline(path) if path.root.exists() else Baseline.empty()
+        existing = _existing_baseline(path, refresh)
         return apply_baseline(
             keyed_violations(Violations(report.violations), path),
             existing,

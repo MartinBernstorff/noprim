@@ -6,14 +6,15 @@ import pytest
 
 from noprim_core.annotations import AnnotationText
 from noprim_core.baseline import Baseline, BaselineKey
-from noprim_core.checker import (
+from noprim_core.rules.code import RuleCode
+from noprim_core.site import (
     ColumnNumber,
     Filename,
     LineNumber,
     Qualname,
     Surface,
-    Violation,
 )
+from noprim_core.violation import Violation
 from noprim_io.baseline import (
     BaselinePath,
     MalformedBaselineError,
@@ -31,6 +32,7 @@ from noprim_io.paths import SourceFile
 def _key(filename: Filename, qualname: Qualname) -> BaselineKey:
     return BaselineKey(
         filename=filename,
+        code=RuleCode("NOPRIM001"),
         surface=Surface.PARAMETER,
         qualname=qualname,
         annotation=AnnotationText("str"),
@@ -76,10 +78,15 @@ def test_groups_entries_by_filename_on_disk(tmp_path: Path) -> None:
 
     written = cast("dict[str, Any]", json.loads(path.root.read_text()))
     files = cast("dict[str, list[dict[str, str]]]", written["files"])
-    assert written["version"] == 1
+    assert written["version"] == 2
     assert sorted(files) == ["src/a.py", "src/b.py"]
     assert files["src/a.py"] == [
-        {"surface": "parameter", "qualname": "f.a", "annotation": "str"}
+        {
+            "code": "NOPRIM001",
+            "surface": "parameter",
+            "qualname": "f.a",
+            "annotation": "str",
+        }
     ]
 
 
@@ -93,10 +100,20 @@ def test_rejects_a_baseline_that_is_not_json(tmp_path: Path) -> None:
 
 def test_rejects_a_baseline_written_by_a_later_noprim(tmp_path: Path) -> None:
     path = BaselinePath(tmp_path / ".noprim.json")
-    _ = path.root.write_text(json.dumps({"version": 2, "files": {}}))
+    _ = path.root.write_text(json.dumps({"version": 3, "files": {}}))
 
-    with pytest.raises(UnsupportedBaselineVersionError):
+    with pytest.raises(UnsupportedBaselineVersionError) as caught:
         _ = read_baseline(path)
+    assert "upgrade noprim" in str(caught.value)
+
+
+def test_an_older_baseline_asks_to_be_regenerated(tmp_path: Path) -> None:
+    path = BaselinePath(tmp_path / ".noprim.json")
+    _ = path.root.write_text(json.dumps({"version": 1, "files": {}}))
+
+    with pytest.raises(UnsupportedBaselineVersionError) as caught:
+        _ = read_baseline(path)
+    assert "--write-baseline" in str(caught.value)
 
 
 def test_keys_violations_relative_to_the_repo_above_the_baseline(
@@ -107,6 +124,7 @@ def test_keys_violations_relative_to_the_repo_above_the_baseline(
     path = BaselinePath(tmp_path / "nested" / ".noprim.json")
     violation = Violation(
         filename=Filename(str(tmp_path / "src" / "a.py")),
+        code=RuleCode("NOPRIM001"),
         line=LineNumber(1),
         column=ColumnNumber(1),
         surface=Surface.PARAMETER,

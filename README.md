@@ -5,24 +5,45 @@ about what it holds; a `UserId` does.
 
 ```console
 $ noprim check .
-src/billing/invoice.py:14:22: parameter "customer" is annotated "str"
-src/billing/invoice.py:14:39: return type is annotated "bool"
+src/billing/invoice.py:14:22: NOPRIM001 parameter "customer" is annotated "str"
+src/billing/invoice.py:14:39: NOPRIM002 return type is annotated "int"
 Checked 42 files in 31ms - found 2 violations
 ```
 
 Exits 1 when anything is reported, 0 otherwise, and 2 when a path does not exist or
 cannot be read.
 
-## What gets flagged
+## Rules
 
-Three surfaces, wherever a denied type appears anywhere inside the annotation —
-`list[str]`, `dict[str, UserId]` and `str | None` all count:
+Every violation names the rule that fired, and rules are numbered by smell and by
+surface — so a codebase drowning in return types can silence `NOPRIM002` without
+allowing `int` everywhere.
 
-| Surface | Example |
-| --- | --- |
-| Parameter | `def send(to: str) -> None` |
-| Return type | `def total() -> int` |
-| Class attribute | `class Order:\n    id: str` |
+| Code | Rule | Flags | Default |
+| --- | --- | --- | --- |
+| `NOPRIM001` | `primitive-parameter` | `def send(to: str) -> None` | on |
+| `NOPRIM002` | `primitive-return` | `def total() -> int` | on |
+| `NOPRIM003` | `primitive-attribute` | `class Order:` / `    id: str` | on |
+| `NOPRIM004` | `top-type-parameter` | `def send(to: Any) -> None` | off |
+| `NOPRIM005` | `top-type-return` | `def payload() -> Any` | off |
+| `NOPRIM006` | `top-type-attribute` | `class Order:` / `    meta: Any` | off |
+| `NOPRIM007` | `predicate-return` | `def is_ready() -> bool` | off |
+
+`--select` replaces the default set, `--extend-select` adds to it and `--ignore`
+subtracts, all three taking code prefixes as ruff does. A selector that names no rule
+is an error.
+
+```console
+$ noprim check --ignore NOPRIM002 .          # every default rule but return types
+$ noprim check --extend-select NOPRIM004 .   # the defaults, plus Any on parameters
+$ noprim check --select NOPRIM .             # every rule there is
+```
+
+An annotation can break two rules at once — `dict[str, Any]` is a primitive and a top
+type — and reports once per rule, so the codes tell you which half to fix.
+
+A denied type counts wherever it appears inside the annotation — `list[str]`,
+`dict[str, UserId]` and `str | None` all count.
 
 The deny-list covers the builtins (`int`, `str`, `float`, `bool`, `bytes`,
 `bytearray`, `complex`), the stdlib value types (`Path`, `PurePath`, `UUID`,
@@ -32,9 +53,10 @@ The deny-list covers the builtins (`int`, `str`, `float`, `bool`, `bytes`,
 
 `Any` and `object` are not on it. They are top types, not primitives: they say the
 type is unknown rather than too narrow, and `object` is the right annotation for
-`**kwargs` you never inspect. That is a different smell, so it is its own rule and
-`--top-types` opts into it. The rule is all or nothing, so `--allow Any` is an error;
-`--deny Any` still works if you want one of them on the deny-list by itself.
+`**kwargs` you never inspect. That is a different smell, so it has rules of its own —
+`NOPRIM004` to `NOPRIM006`, off until selected. Those rules are all or nothing, so
+`--allow Any` is an error; `--deny Any` still works if you want one of them on the
+deny-list by itself, reported as an ordinary primitive.
 
 A container matches only when it is bare: `list` is reported, `list[Name]` is not,
 because the annotation names a collection of a type that is already meaningful. It is
@@ -48,9 +70,9 @@ Some signatures are not the author's to choose, so noprim does not report them:
 - **`RootModel` subclass bodies.** Wrapping a primitive is the point of the pattern.
 - **Overload implementations.** The stubs above them carry the real types.
 - **Predicates** — functions returning a bare `bool`. A domain type around the answer
-  to a yes-or-no question rarely earns its keep. Only the return type is exempt: a
-  `bool` parameter, attribute, `list[bool]` or `bool | None` is still reported. Pass
-  `--check-predicates` to report them too.
+  to a yes-or-no question rarely earns its keep, so `NOPRIM002` leaves them to
+  `NOPRIM007`, which is off by default. Only the bare return type is carved out: a
+  `bool` parameter, attribute, `list[bool]` or `bool | None` is still reported.
 - **`self` and `cls`.**
 - **`Literal[...]` arguments**, which are values rather than types.
 - **Parameters of pytest tests and fixtures**, in files matching `test_*.py` or
@@ -88,8 +110,9 @@ function's name, not one of its own, so it is never skipped this way.
 | --- | --- |
 | `--allow NAME` | Remove a type from the deny-list. Repeatable. |
 | `--deny NAME` | Add a type to the deny-list. Repeatable. |
-| `--top-types` | Also report `Any` and `object`. Off by default. |
-| `--check-predicates` | Report functions returning `bool` instead of skipping them. |
+| `--select CODE` | Run these rule codes instead of the defaults. Prefixes count. Repeatable. |
+| `--extend-select CODE` | Run these rule codes as well as the selected ones. Repeatable. |
+| `--ignore CODE` | Drop these rule codes from the run. Repeatable. |
 | `--ignore-names NAME` | Skip parameters and attributes called `NAME`. Repeatable. |
 | `--exclude GLOB` | Skip paths while walking. Gitignore syntax, anchored at the config file's directory, or the repo root when there is no config. Repeatable. |
 | `--quiet`, `-q` | Suppress the trailing summary. |
@@ -109,8 +132,8 @@ allow = ["str"]
 deny = ["Enum"]
 exclude = ["generated/**"]
 ignore-names = ["kwargs", "size"]
-check-predicates = true
-top-types = true
+extend-select = ["NOPRIM004"]
+ignore = ["NOPRIM002"]
 ```
 
 Every key is a flag of the same name, and passing that flag replaces the key outright
@@ -133,8 +156,8 @@ allow = ["str", "int", "bool"]
 ```
 
 Overrides carry `allow` and `deny` only. The remaining keys are whole-run settings:
-`exclude` decides which files are walked at all, and the rest are rules rather than
-deny-lists.
+`exclude` decides which files are walked at all, and `select`, `extend-select` and
+`ignore` choose rules rather than deny-lists.
 
 Patterns use gitignore syntax, anchored at the directory holding the config, so
 `test_*.py` matches at any depth and `domain/**` does not. Every entry that matches a
@@ -147,8 +170,8 @@ does nothing is the failure this feature exists to prevent.
 
 ## Dogfooding
 
-`moon run :noprim` runs this linter over its own source with no `--allow` flags, as
-part of the lint chain and the pre-commit hooks. Building it that way surfaced three
+`moon run :noprim` runs this linter over its own source with every rule selected and
+no `--allow` flags, as part of the lint chain and the pre-commit hooks. Building it that way surfaced three
 things worth recording:
 
 - **`X | None` was invisible.** The checker matched `Optional[str]` but not the PEP 604

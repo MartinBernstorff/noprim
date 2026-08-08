@@ -1,4 +1,5 @@
 import inspect
+import json
 import re
 from pathlib import Path
 
@@ -31,9 +32,9 @@ def test_reports_each_surface_ruff_style(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", str(target)])
 
     assert result.stdout.splitlines() == [
-        f'{target}:1:20: parameter "user_id" is annotated "str"',
-        f'{target}:1:28: return type is annotated "int"',
-        f'{target}:3:12: attribute "email" is annotated "str"',
+        f'{target}:1:20: NOPRIM001 parameter "user_id" is annotated "str"',
+        f'{target}:1:28: NOPRIM002 return type is annotated "int"',
+        f'{target}:3:12: NOPRIM003 attribute "email" is annotated "str"',
     ]
 
 
@@ -45,7 +46,7 @@ def test_quiet_hides_the_summary_but_not_the_violations(tmp_path: Path) -> None:
 
     assert result.stderr == ""
     assert result.stdout.splitlines() == [
-        f'{target}:1:10: parameter "a" is annotated "int"'
+        f'{target}:1:10: NOPRIM001 parameter "a" is annotated "int"'
     ]
 
 
@@ -120,12 +121,14 @@ def test_allow_removes_type_from_deny_list(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", "--allow", "int", str(target)])
 
     assert result.stdout.splitlines() == [
-        f'{target}:1:18: return type is annotated "str"'
+        f'{target}:1:18: NOPRIM002 return type is annotated "str"'
     ]
 
 
 @pytest.mark.parametrize("annotation", ["Any", "object"])
-@pytest.mark.parametrize(("flags", "expected"), [([], 0), (["--top-types"], 1)])
+@pytest.mark.parametrize(
+    ("flags", "expected"), [([], 0), (["--select", "NOPRIM004"], 1)]
+)
 def test_top_types_are_reported_only_when_opted_into(
     tmp_path: Path, annotation: str, flags: list[str], expected: int
 ) -> None:
@@ -140,7 +143,7 @@ def test_top_types_are_reported_only_when_opted_into(
     )
 
 
-@pytest.mark.parametrize("flags", [[], ["--top-types"]])
+@pytest.mark.parametrize("flags", [[], ["--select", "NOPRIM004"]])
 def test_allow_of_a_top_type_exits_two(tmp_path: Path, flags: list[str]) -> None:
     target = tmp_path / "bad.py"
     _ = target.write_text("def f(x: Any) -> None: ...\n")
@@ -149,7 +152,7 @@ def test_allow_of_a_top_type_exits_two(tmp_path: Path, flags: list[str]) -> None
 
     assert result.exit_code == 2
     assert (
-        "allow of a type governed by top-types: Any"
+        "allow of a type governed by the top-type rules: Any"
         in _plain(DisplayText(result.output)).root
     )
 
@@ -170,12 +173,58 @@ def test_predicates_are_skipped_until_asked_for(tmp_path: Path) -> None:
     _ = target.write_text("def is_ready(x: Name) -> bool: ...\n")
 
     skipped = runner.invoke(app, ["check", str(target)])
-    checked = runner.invoke(app, ["check", "--check-predicates", str(target)])
+    checked = runner.invoke(app, ["check", "--select", "NOPRIM007", str(target)])
 
     assert skipped.stdout.splitlines() == []
     assert checked.stdout.splitlines() == [
-        f'{target}:1:26: return type is annotated "bool"'
+        f'{target}:1:26: NOPRIM007 return type is annotated "bool"'
     ]
+
+
+def test_ignore_drops_a_rule_from_the_run(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(x: int) -> str: ...\n")
+
+    result = runner.invoke(app, ["check", "--ignore", "NOPRIM002", str(target)])
+
+    assert result.stdout.splitlines() == [
+        f'{target}:1:10: NOPRIM001 parameter "x" is annotated "int"'
+    ]
+
+
+def test_a_selector_prefix_turns_on_every_rule(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def is_ready(x: Any) -> bool: ...\n")
+
+    result = runner.invoke(app, ["check", "--select", "NOPRIM", str(target)])
+
+    assert result.stdout.splitlines() == [
+        f'{target}:1:17: NOPRIM004 parameter "x" is annotated "Any"',
+        f'{target}:1:25: NOPRIM007 return type is annotated "bool"',
+    ]
+
+
+def test_extend_select_adds_a_rule_to_the_defaults(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(x: Any, y: int) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", "--extend-select", "NOPRIM004", str(target)])
+
+    assert result.stdout.splitlines() == [
+        f'{target}:1:10: NOPRIM004 parameter "x" is annotated "Any"',
+        f'{target}:1:18: NOPRIM001 parameter "y" is annotated "int"',
+    ]
+
+
+@pytest.mark.parametrize("flag", ["--select", "--extend-select", "--ignore"])
+def test_a_selector_matching_no_rule_exits_two(tmp_path: Path, flag: str) -> None:
+    target = tmp_path / "good.py"
+    _ = target.write_text("def f() -> None: ...\n")
+
+    result = runner.invoke(app, ["check", flag, "NOPRIM999", str(target)])
+
+    assert result.exit_code == 2
+    assert "no rule matches: NOPRIM999" in _plain(DisplayText(result.output)).root
 
 
 def test_ignore_names_skips_symbols_by_name(tmp_path: Path) -> None:
@@ -185,7 +234,7 @@ def test_ignore_names_skips_symbols_by_name(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", "--ignore-names", "kwargs", str(target)])
 
     assert result.stdout.splitlines() == [
-        f'{target}:1:13: parameter "size" is annotated "int"'
+        f'{target}:1:13: NOPRIM001 parameter "size" is annotated "int"'
     ]
 
 
@@ -313,7 +362,7 @@ def test_reports_only_violations_the_baseline_does_not_cover(tmp_path: Path) -> 
 
     assert result.exit_code == 1
     assert result.stdout.splitlines() == [
-        f'{target}:2:10: parameter "b" is annotated "str"'
+        f'{target}:2:10: NOPRIM001 parameter "b" is annotated "str"'
     ]
     assert "found 1 violation, 1 suppressed by baseline" in result.stderr
 
@@ -430,6 +479,35 @@ def test_write_baseline_without_a_path_is_rejected(tmp_path: Path) -> None:
     )
 
 
+def _outdated_baseline(path: BaselinePath) -> None:
+    _ = path.root.write_text(json.dumps({"version": 1, "files": {}}))
+
+
+def test_a_baseline_from_an_older_noprim_stops_the_run(tmp_path: Path) -> None:
+    _ = (tmp_path / "bad.py").write_text("def f(a: int) -> None: ...\n")
+    baseline = tmp_path / ".noprim.json"
+    _outdated_baseline(BaselinePath(baseline))
+
+    result = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+
+    assert result.exit_code == 2
+    assert "--write-baseline" in result.stderr
+
+
+def test_write_baseline_replaces_one_from_an_older_noprim(tmp_path: Path) -> None:
+    _ = (tmp_path / "bad.py").write_text("def f(a: int) -> None: ...\n")
+    baseline = tmp_path / ".noprim.json"
+    _outdated_baseline(BaselinePath(baseline))
+
+    result = runner.invoke(
+        app,
+        ["check", "--baseline", str(baseline), "--write-baseline", str(tmp_path)],
+    )
+
+    assert result.exit_code == 0
+    assert len(read_baseline(BaselinePath(baseline)).root) == 1
+
+
 def test_a_malformed_baseline_stops_the_run(tmp_path: Path) -> None:
     _ = (tmp_path / "bad.py").write_text("def f(a: int) -> None: ...\n")
     baseline = tmp_path / ".noprim.json"
@@ -544,23 +622,27 @@ def test_a_rule_key_can_come_from_the_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / ".git").mkdir()
-    _ = (tmp_path / "noprim.toml").write_text("top-types = true\n")
+    _ = (tmp_path / "noprim.toml").write_text('select = ["NOPRIM004"]\n')
     _ = (tmp_path / "a.py").write_text("def f(x: Any) -> None: ...\n")
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ["check", "a.py"])
 
-    assert result.stdout.splitlines() == ['a.py:1:10: parameter "x" is annotated "Any"']
+    assert result.stdout.splitlines() == [
+        'a.py:1:10: NOPRIM004 parameter "x" is annotated "Any"'
+    ]
 
 
-def test_a_boolean_config_key_survives_when_its_flag_is_absent(
+def test_a_config_key_survives_when_a_different_flag_is_passed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / ".git").mkdir()
-    _ = (tmp_path / "noprim.toml").write_text("check-predicates = true\n")
+    _ = (tmp_path / "noprim.toml").write_text('select = ["NOPRIM007"]\n')
     _ = (tmp_path / "a.py").write_text("def is_ready(x: Name) -> bool: ...\n")
     monkeypatch.chdir(tmp_path)
 
-    result = runner.invoke(app, ["check", "--top-types", "a.py"])
+    result = runner.invoke(app, ["check", "--ignore-names", "unused", "a.py"])
 
-    assert result.stdout.splitlines() == ['a.py:1:26: return type is annotated "bool"']
+    assert result.stdout.splitlines() == [
+        'a.py:1:26: NOPRIM007 return type is annotated "bool"'
+    ]

@@ -1,7 +1,9 @@
 import pytest
 from pydantic import ValidationError
 
-from noprim_core.checker import DeniedTypes
+from noprim_core.config import DeniedTypes
+from noprim_core.rules.code import RuleCode, Selector, Selectors
+from noprim_core.rules.registry import UnknownSelectorError, default_selection
 from noprim_core.settings import (
     AllowedAndDeniedError,
     AllowedNames,
@@ -26,6 +28,28 @@ def _raised(error: ValidationError, expected: type[ValueError]) -> Verdict:
 
 def test_defaults_resolve_to_the_default_deny_list() -> None:
     assert Settings().resolve(_ANY).denied == DeniedTypes.default()
+
+
+def test_defaults_resolve_to_the_default_selection() -> None:
+    assert Settings().resolve(_ANY).selection == default_selection()
+
+
+def test_select_narrows_the_rules_that_run() -> None:
+    settings = Settings(select=Selectors((Selector("NOPRIM007"),)))
+    assert settings.resolve(_ANY).selection.contains(RuleCode("NOPRIM007")).root
+    assert not settings.resolve(_ANY).selection.contains(RuleCode("NOPRIM001")).root
+
+
+def test_ignore_subtracts_from_the_rules_that_run() -> None:
+    settings = Settings(ignore=Selectors((Selector("NOPRIM002"),)))
+    assert not settings.resolve(_ANY).selection.contains(RuleCode("NOPRIM002")).root
+    assert settings.resolve(_ANY).selection.contains(RuleCode("NOPRIM001")).root
+
+
+def test_a_selector_that_names_no_rule_is_rejected() -> None:
+    with pytest.raises(ValidationError) as caught:
+        _ = Settings(select=Selectors((Selector("NOPRIM999"),)))
+    assert _raised(caught.value, UnknownSelectorError).root
 
 
 def test_deny_adds_to_the_deny_list() -> None:

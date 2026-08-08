@@ -4,14 +4,10 @@ from iterpy import Arr
 from pydantic import BaseModel, RootModel
 
 from noprim_core.baseline import BaselineOutcome
-from noprim_core.checker import (
-    ColumnNumber,
-    Filename,
-    LineNumber,
-    Surface,
-    Violation,
-)
+from noprim_core.rules.registry import rule_for
+from noprim_core.site import ColumnNumber, Filename, LineNumber
 from noprim_core.verdict import Verdict
+from noprim_core.violation import Violation
 from noprim_io.baseline import BaselinePath
 from noprim_io.check import CheckReport
 
@@ -80,15 +76,8 @@ def _plural(count: Count, noun: Noun) -> DisplayText:
 
 
 def _message(violation: Violation) -> DisplayText:
-    name = violation.qualname.leaf().root
-    annotation = violation.annotation.root
-    match violation.surface:
-        case Surface.PARAMETER:
-            return DisplayText(f'parameter "{name}" is annotated "{annotation}"')
-        case Surface.RETURN:
-            return DisplayText(f'return type is annotated "{annotation}"')
-        case Surface.ATTRIBUTE:
-            return DisplayText(f'attribute "{name}" is annotated "{annotation}"')
+    rule = rule_for(violation.code)
+    return DisplayText(f"{violation.code.root} {rule.message(violation).root}")
 
 
 def _found(report: CheckReport, suppressed: Count) -> DisplayText:

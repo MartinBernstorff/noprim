@@ -12,13 +12,10 @@ from noprim_core.baseline import (
     KeyedViolations,
     PrunableFiles,
 )
-from noprim_core.checker import (
-    Filename,
-    Qualname,
-    Surface,
-    Violation,
-)
+from noprim_core.rules.code import RuleCode
+from noprim_core.site import Filename, Qualname, Surface
 from noprim_core.verdict import Verdict
+from noprim_core.violation import Violation
 from noprim_io.check import CheckPaths, CheckReport
 from noprim_io.paths import ExistingDirectory, SourceFile, repo_root
 
@@ -34,7 +31,9 @@ class Violations(RootModel[tuple[Violation, ...]]):
 class BaselineVersion(RootModel[int]):
     @classmethod
     def current(cls) -> "BaselineVersion":
-        return cls(1)
+        # 2: entries name the rule that fired, so two rules on one annotation are
+        # two entries rather than one.
+        return cls(2)
 
 
 class MalformedBaselineError(Exception):
@@ -44,12 +43,19 @@ class MalformedBaselineError(Exception):
 
 class UnsupportedBaselineVersionError(Exception):
     def __init__(self, path: BaselinePath, version: BaselineVersion) -> None:
+        self.outdated = Verdict(version.root < BaselineVersion.current().root)
+        remedy = (
+            "rerun with --write-baseline to regenerate it"
+            if self.outdated.root
+            else "upgrade noprim"
+        )
         super().__init__(
-            f"{path.root}: unsupported baseline version {version.root}; upgrade noprim"
+            f"{path.root}: unsupported baseline version {version.root}; {remedy}"
         )
 
 
 class _Entry(BaseModel):
+    code: RuleCode
     surface: Surface
     qualname: Qualname
     annotation: AnnotationText
@@ -85,6 +91,7 @@ def keyed_violations(violations: Violations, path: BaselinePath) -> KeyedViolati
                         filename=anchor.relative(
                             SourceFile(Path(violation.filename.root))
                         ),
+                        code=violation.code,
                         surface=violation.surface,
                         qualname=violation.qualname,
                         annotation=violation.annotation,
@@ -135,6 +142,7 @@ def read_baseline(path: BaselinePath) -> Baseline:
         frozenset(
             BaselineKey(
                 filename=filename,
+                code=entry.code,
                 surface=entry.surface,
                 qualname=entry.qualname,
                 annotation=entry.annotation,
@@ -155,6 +163,7 @@ def write_baseline(path: BaselinePath, baseline: Baseline) -> None:
         "files": {
             filename: [
                 _Entry(
+                    code=key.code,
                     surface=key.surface,
                     qualname=key.qualname,
                     annotation=key.annotation,

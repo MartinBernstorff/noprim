@@ -4,16 +4,11 @@ import pathspec
 from iterpy import Arr
 from pydantic import BaseModel, Field, RootModel
 
-from noprim_core.checker import (
-    CheckConfig,
-    ColumnNumber,
-    Filename,
-    LineNumber,
-    SourceCode,
-    Violation,
-    check_source,
-)
+from noprim_core.checker import SourceCode, check_source
+from noprim_core.config import CheckConfig
+from noprim_core.site import ColumnNumber, Filename, LineNumber
 from noprim_core.verdict import Verdict
+from noprim_core.violation import Violation
 from noprim_io.paths import (
     DirectoryEntry,
     ExistingDirectory,
