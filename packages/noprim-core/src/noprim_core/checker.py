@@ -73,11 +73,24 @@ def _is_dunder(function: Function) -> Verdict:
     return Verdict(function.name.startswith("__") and function.name.endswith("__"))
 
 
+def _decorated_as_override(function: Function) -> Verdict:
+    # A supertype dictated this signature, and the type checker verifies the claim.
+    return _mentions(Arr(function.decorator_list), SymbolName("override"))
+
+
 def _has_exempt_signature(function: Function, overloaded: OverloadedNames) -> Verdict:
     is_overload_implementation = Verdict(function.name in overloaded.root).and_(
         _decorated_as_overload(function).negated
     )
-    return _is_dunder(function).or_(is_overload_implementation)
+    return Verdict.any(
+        Arr(
+            [
+                _is_dunder(function),
+                is_overload_implementation,
+                _decorated_as_override(function),
+            ]
+        )
+    )
 
 
 def _pytest_owns_parameters(function: Function) -> Verdict:
