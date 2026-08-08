@@ -26,6 +26,11 @@ class Qualname(RootModel[str]):
         return Qualname(self.root.rsplit(".", 1)[-1])
 
 
+class Verdict(RootModel[bool]):
+    def __bool__(self) -> bool:
+        return self.root
+
+
 class DeniedTypes(RootModel[frozenset[str]]):
     @classmethod
     def default(cls) -> "DeniedTypes":
@@ -62,6 +67,7 @@ class DeniedTypes(RootModel[frozenset[str]]):
 
 class CheckConfig(BaseModel):
     denied: DeniedTypes = Field(default_factory=DeniedTypes.default)
+    check_predicates: Verdict = Verdict(root=False)
 
 
 class Surface(StrEnum):
@@ -83,13 +89,8 @@ class ColumnNumber(RootModel[int]):
 
 
 class TypeNames(RootModel[frozenset[str]]):
-    def any_denied(self, denied: DeniedTypes) -> "Verdict":
+    def any_denied(self, denied: DeniedTypes) -> Verdict:
         return Verdict(len(self.root & denied.root) > 0)
-
-
-class Verdict(RootModel[bool]):
-    def __bool__(self) -> bool:
-        return self.root
 
 
 class Site(BaseModel):
@@ -100,6 +101,7 @@ class Site(BaseModel):
     annotation: AnnotationText
     names: TypeNames
     pytest_owned: Verdict
+    predicate_return: Verdict
 
 
 class Violation(BaseModel):
@@ -186,6 +188,19 @@ def _annotation_names(annotation: ast.expr) -> TypeNames:
             return TypeNames(frozenset())
 
 
+def _annotates_bool(annotation: ast.expr) -> Verdict:
+    match annotation:
+        case ast.Name(id="bool") | ast.Attribute(attr="bool"):
+            return Verdict(root=True)
+        case ast.Constant(value=str() as text):
+            try:
+                return _annotates_bool(ast.parse(text, mode="eval").body)
+            except SyntaxError:
+                return Verdict(root=False)
+        case _:
+            return Verdict(root=False)
+
+
 def _site(
     annotation: ast.expr, surface: Surface, qualname: Qualname, pytest_owned: Verdict
 ) -> Site:
@@ -197,6 +212,9 @@ def _site(
         annotation=AnnotationText(ast.unparse(annotation)),
         names=_annotation_names(annotation),
         pytest_owned=pytest_owned,
+        predicate_return=Verdict(
+            surface == Surface.RETURN and _annotates_bool(annotation).root
+        ),
     )
 
 
@@ -341,6 +359,11 @@ def check_source(
         _sites_in(tree.body, Qualname(""))
         .filter(lambda site: bool(site.names.any_denied(config.denied)))
         .filter(lambda site: not bool(bool(exempt) and site.pytest_owned))
+        .filter(
+            lambda site: (
+                bool(config.check_predicates) or not bool(site.predicate_return)
+            )
+        )
         .filter(lambda site: site.line.root not in ignored.root)
         .map(
             lambda site: Violation(
