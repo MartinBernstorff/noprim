@@ -14,6 +14,9 @@ if [ ! -d "$directory" ]; then
   exit 1
 fi
 
+# See uv_run.sh: a cold tree would otherwise fold uv's build progress into the example.
+(cd "$directory" && uv run noprim --help >/dev/null 2>&1)
+
 output="$(cd "$directory" && uv run noprim "$@" 2>&1)"
 status=$?
 

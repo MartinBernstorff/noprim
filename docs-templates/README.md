@@ -17,7 +17,7 @@ surface — so a codebase drowning in return types can silence `NOPRIM002` witho
 allowing `int` everywhere.
 
 ```
-!uv run python ../docs-support/scripts/tables.py rules
+!../docs-support/scripts/uv_run.sh python ../docs-support/scripts/tables.py rules
 ```
 
 `--preset` chooses which set to start from — `default` for the rules marked on above,
@@ -36,7 +36,7 @@ The deny-list covers the builtins, the stdlib value types and the containers —
 with what to reach for instead. Adjust it per run with `--allow` and `--deny`.
 
 ```
-!uv run python ../docs-support/scripts/tables.py denied
+!../docs-support/scripts/uv_run.sh python ../docs-support/scripts/tables.py denied
 ```
 
 `Any` and `object` are not on it. They are top types, not primitives: they say the
@@ -150,7 +150,7 @@ suppress them a line at a time.
 ## Flags
 
 ```
-!uv run noprim check --help
+!../docs-support/scripts/uv_run.sh noprim check --help
 ```
 
 Directories are walked recursively, honouring every `.gitignore` from the repo root
