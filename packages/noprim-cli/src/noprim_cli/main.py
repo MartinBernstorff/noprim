@@ -1,12 +1,20 @@
 from pathlib import Path
 from time import perf_counter
-from typing import Annotated
+from typing import Annotated, override
 
 import typer
 from iterpy import Arr
-from pydantic import RootModel, ValidationError
+from pydantic import BaseModel, RootModel, ValidationError
 
-from noprim_core import CheckConfig, DeniedTypes, Surface, Violation
+from noprim_core import (
+    CheckConfig,
+    ColumnNumber,
+    DeniedTypes,
+    Filename,
+    LineNumber,
+    Surface,
+    Violation,
+)
 from noprim_io import (
     CheckPaths,
     CheckReport,
@@ -57,7 +65,15 @@ class Noun(RootModel[str]):
 
 
 class DisplayText(RootModel[str]):
-    pass
+    # Interpolated into other messages, so it has to render as its text and not as
+    # the model's repr.
+    @override
+    def __str__(self) -> str:
+        return self.root
+
+    @override
+    def __repr__(self) -> str:
+        return self.root
 
 
 @app.callback()
@@ -92,30 +108,54 @@ def _message(violation: Violation) -> DisplayText:
 
 def _found(report: CheckReport) -> DisplayText:
     violations = (
-        f"found {_plural(Count(len(report.violations)), Noun('violation')).root}"
+        f"found {_plural(Count(len(report.violations)), Noun('violation'))}"
         if len(report.violations) > 0
         else "no violations"
     )
     if len(report.errors) == 0:
         return DisplayText(violations)
-    errors = _plural(Count(len(report.errors)), Noun("error")).root
+    errors = _plural(Count(len(report.errors)), Noun("error"))
     return DisplayText(f"{violations}, {errors}")
 
 
+class Diagnostic(BaseModel):
+    filename: Filename
+    line: LineNumber
+    column: ColumnNumber
+    text: DisplayText
+
+    def __lt__(self, other: "Diagnostic") -> bool:
+        return (self.filename.root, self.line.root, self.column.root) < (
+            other.filename.root,
+            other.line.root,
+            other.column.root,
+        )
+
+    def rendered(self) -> DisplayText:
+        return DisplayText(
+            f"{self.filename.root}:{self.line.root}:{self.column.root}: {self.text}"
+        )
+
+
 def _diagnostics(report: CheckReport) -> Arr[DisplayText]:
-    located = sorted(
-        [
-            (v.filename.root, v.line.root, v.column.root, _message(v).root)
+    located: list[Diagnostic] = [
+        *(
+            Diagnostic(
+                filename=v.filename, line=v.line, column=v.column, text=_message(v)
+            )
             for v in report.violations
-        ]
-        + [
-            (e.filename.root, e.line.root, e.column.root, e.message.root)
+        ),
+        *(
+            Diagnostic(
+                filename=e.filename,
+                line=e.line,
+                column=e.column,
+                text=DisplayText(e.message.root),
+            )
             for e in report.errors
-        ]
-    )
-    return Arr(located).map(
-        lambda entry: DisplayText(f"{entry[0]}:{entry[1]}:{entry[2]}: {entry[3]}")
-    )
+        ),
+    ]
+    return Arr(sorted(located)).map(Diagnostic.rendered)
 
 
 def _resolve_config(allow: AllowedNames, deny: DeniedNames) -> CheckConfig:
@@ -176,6 +216,7 @@ def check(
                 source=source,
             ),
         )
+
     # A directory can vanish between being listed and being walked, which surfaces
     # as ExistingDirectory failing to validate rather than as an OSError.
     except (OSError, ValidationError) as error:
@@ -185,12 +226,12 @@ def check(
 
     diagnostics = _diagnostics(report).to_list()
     for line in diagnostics:
-        typer.echo(line.root)
+        typer.echo(str(line))
 
     if not quiet:
         typer.echo(
-            f"Checked {_plural(Count(report.files_checked.root), Noun('file')).root} "
-            f"in {pretty_duration(elapsed).root} - {_found(report).root}",
+            f"Checked {_plural(Count(report.files_checked.root), Noun('file'))} "
+            f"in {pretty_duration(elapsed)} - {_found(report)}",
             err=True,
         )
 

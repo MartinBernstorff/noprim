@@ -339,10 +339,8 @@ def check_source(
     exempt = _is_pytest_module(filename)
     return (
         _sites_in(tree.body, Qualname(""))
-        # pyrefly: ignore[bad-argument-type]
-        .filter(lambda site: site.names.any_denied(config.denied))
-        # pyrefly: ignore[implicit-bool]
-        .filter(lambda site: not (exempt and site.pytest_owned))
+        .filter(lambda site: bool(site.names.any_denied(config.denied)))
+        .filter(lambda site: not bool(bool(exempt) and site.pytest_owned))
         .filter(lambda site: site.line.root not in ignored.root)
         .map(
             lambda site: Violation(
