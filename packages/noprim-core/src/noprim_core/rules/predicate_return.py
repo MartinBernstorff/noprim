@@ -1,6 +1,6 @@
 from noprim_core.annotations import SymbolName, text_is_exactly
 from noprim_core.config import CheckConfig
-from noprim_core.rules.code import RuleCode, RuleName
+from noprim_core.rules.code import RuleCode
 from noprim_core.rules.rule import RuleMessage, annotated
 from noprim_core.site import Site, Surface
 from noprim_core.verdict import Verdict
@@ -16,8 +16,7 @@ def returns_a_bare_bool(site: Site) -> Verdict:
 
 class PredicateReturn:
     code = RuleCode("NOPRIM007")
-    name = RuleName("predicate-return")
-    default = Verdict(root=False)
+    on_by_default = Verdict(root=False)
 
     def applies(self, site: Site, config: CheckConfig) -> Verdict:
         return Verdict(

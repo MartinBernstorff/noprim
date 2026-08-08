@@ -1,4 +1,5 @@
 import inspect
+import json
 import re
 from pathlib import Path
 
@@ -202,7 +203,7 @@ def test_allow_of_a_top_type_exits_two(tmp_path: Path, flags: list[str]) -> None
 
     assert result.exit_code == 2
     assert (
-        "allow of a type governed by top-types: Any"
+        "allow of a type governed by the top-type rules: Any"
         in _plain(DisplayText(result.output)).root
     )
 
@@ -254,7 +255,7 @@ def test_a_selector_prefix_turns_on_every_rule(tmp_path: Path) -> None:
     ]
 
 
-@pytest.mark.parametrize("flag", ["--select", "--ignore"])
+@pytest.mark.parametrize("flag", ["--select", "--extend-select", "--ignore"])
 def test_a_selector_matching_no_rule_exits_two(tmp_path: Path, flag: str) -> None:
     target = tmp_path / "good.py"
     _ = target.write_text("def f() -> None: ...\n")
@@ -263,6 +264,18 @@ def test_a_selector_matching_no_rule_exits_two(tmp_path: Path, flag: str) -> Non
 
     assert result.exit_code == 2
     assert "no rule matches: NOPRIM999" in _plain(DisplayText(result.output)).root
+
+
+def test_extend_select_adds_a_rule_to_the_defaults(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(x: Any, y: int) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", "--extend-select", "NOPRIM004", str(target)])
+
+    assert result.stdout.splitlines() == [
+        f'{target}:1:10: NOPRIM004 parameter "x" is annotated "Any"',
+        f'{target}:1:18: NOPRIM001 parameter "y" is annotated "int"',
+    ]
 
 
 def test_ignore_names_skips_symbols_by_name(tmp_path: Path) -> None:
@@ -530,6 +543,35 @@ def test_write_baseline_without_a_path_is_rejected(tmp_path: Path) -> None:
     assert (
         "--write-baseline needs --baseline" in _plain(DisplayText(result.output)).root
     )
+
+
+def _outdated_baseline(path: BaselinePath) -> None:
+    _ = path.root.write_text(json.dumps({"version": 1, "files": {}}))
+
+
+def test_a_baseline_from_an_older_noprim_stops_the_run(tmp_path: Path) -> None:
+    _ = (tmp_path / "bad.py").write_text("def f(a: int) -> None: ...\n")
+    baseline = tmp_path / ".noprim.json"
+    _outdated_baseline(BaselinePath(baseline))
+
+    result = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+
+    assert result.exit_code == 2
+    assert "--write-baseline" in result.stderr
+
+
+def test_write_baseline_replaces_one_from_an_older_noprim(tmp_path: Path) -> None:
+    _ = (tmp_path / "bad.py").write_text("def f(a: int) -> None: ...\n")
+    baseline = tmp_path / ".noprim.json"
+    _outdated_baseline(BaselinePath(baseline))
+
+    result = runner.invoke(
+        app,
+        ["check", "--baseline", str(baseline), "--write-baseline", str(tmp_path)],
+    )
+
+    assert result.exit_code == 0
+    assert len(read_baseline(BaselinePath(baseline)).root) == 1
 
 
 def test_a_malformed_baseline_stops_the_run(tmp_path: Path) -> None:

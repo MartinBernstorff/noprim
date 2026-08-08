@@ -3,7 +3,7 @@ from typing import Protocol
 from pydantic import RootModel
 
 from noprim_core.config import CheckConfig
-from noprim_core.rules.code import RuleCode, RuleName
+from noprim_core.rules.code import RuleCode
 from noprim_core.site import Site, Surface
 from noprim_core.verdict import Verdict
 from noprim_core.violation import Violation
@@ -15,9 +15,7 @@ class RuleMessage(RootModel[str]):
 
 class Rule(Protocol):
     code: RuleCode
-    name: RuleName
-    # Whether the rule runs when the caller selects nothing.
-    default: Verdict
+    on_by_default: Verdict
 
     def applies(self, site: Site, config: CheckConfig) -> Verdict: ...
 

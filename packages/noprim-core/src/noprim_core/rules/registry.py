@@ -44,7 +44,7 @@ def default_selection() -> Selection:
     return Selection(
         frozenset(
             Arr(RULES)
-            .filter(lambda rule: bool(rule.default))
+            .filter(lambda rule: bool(rule.on_by_default))
             .map(lambda rule: rule.code)
         )
     )
@@ -78,9 +78,12 @@ def _validated(selectors: Selectors) -> None:
         raise UnknownSelectorError(Selectors(tuple(unknown)))
 
 
-def selection(select: Selectors | None, ignore: Selectors) -> Selection:
+def selection(
+    select: Selectors | None, extend: Selectors, ignore: Selectors
+) -> Selection:
+    _validated(extend)
     _validated(ignore)
-    if select is None:
-        return Selection(default_selection().root - _selected(ignore).root)
-    _validated(select)
-    return Selection(_selected(select).root - _selected(ignore).root)
+    if select is not None:
+        _validated(select)
+    chosen = default_selection() if select is None else _selected(select)
+    return Selection((chosen.root | _selected(extend).root) - _selected(ignore).root)

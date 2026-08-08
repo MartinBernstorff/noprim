@@ -150,6 +150,7 @@ class Overrides(BaseModel):
     exclude: PathPatterns | None
     ignore_names: IgnoredNames | None
     select: Selectors | None
+    extend_select: Selectors | None
     ignore: Selectors | None
 
 
@@ -212,6 +213,13 @@ def check(  # noqa: PLR0913, PLR0917
             " Repeatable.",
         ),
     ] = None,
+    extend_select: Annotated[  # noprim: ignore
+        list[str] | None,
+        typer.Option(
+            "--extend-select",
+            help="Run these rule codes as well as the selected ones. Repeatable.",
+        ),
+    ] = None,
     ignore: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option(
@@ -246,6 +254,7 @@ def check(  # noqa: PLR0913, PLR0917
                 else None
             ),
             select=_selectors(select),
+            extend_select=_selectors(extend_select),
             ignore=_selectors(ignore),
         )
     )
@@ -274,7 +283,9 @@ def check(  # noqa: PLR0913, PLR0917
         _report_run(report, elapsed, Verdict(root=quiet), Count(0))
 
     path = BaselinePath(baseline)
-    outcome = _against_baseline(report, CheckPaths(targets), path)
+    outcome = _against_baseline(
+        report, CheckPaths(targets), path, Verdict(root=refresh)
+    )
 
     if refresh or not path.root.exists():
         try:
@@ -307,13 +318,25 @@ def _stale_note(count: Count) -> DisplayText:
     return DisplayText(f"{subject}; rerun with --write-baseline to prune")
 
 
+def _existing_baseline(path: BaselinePath, refresh: Verdict) -> Baseline:
+    if not path.root.exists():
+        return Baseline.empty()
+    try:
+        return read_baseline(path)
+    except UnsupportedBaselineVersionError as error:
+        # --write-baseline is the remedy the error names, so it has to survive it.
+        if not (refresh.root and error.outdated.root):
+            raise
+        return Baseline.empty()
+
+
 def _against_baseline(
-    report: CheckReport, targets: CheckPaths, path: BaselinePath
+    report: CheckReport, targets: CheckPaths, path: BaselinePath, refresh: Verdict
 ) -> BaselineOutcome:
     # A baseline path under a directory that does not exist surfaces as
     # ExistingDirectory failing to validate rather than as an OSError.
     try:
-        existing = read_baseline(path) if path.root.exists() else Baseline.empty()
+        existing = _existing_baseline(path, refresh)
         return apply_baseline(
             keyed_violations(Violations(report.violations), path),
             existing,

@@ -29,14 +29,18 @@ allowing `int` everywhere.
 | `NOPRIM006` | `top-type-attribute` | `class Order:` / `    meta: Any` | off |
 | `NOPRIM007` | `predicate-return` | `def is_ready() -> bool` | off |
 
-`--select` replaces the default set and `--ignore` subtracts from it, both taking
-code prefixes as ruff does: `--select NOPRIM` turns everything on, `--select NOPRIM00`
-too, `--ignore NOPRIM002` drops one rule. A selector that names no rule is an error.
+`--select` replaces the default set, `--extend-select` adds to it and `--ignore`
+subtracts, all three taking code prefixes as ruff does. A selector that names no rule
+is an error.
 
 ```console
-$ noprim check --ignore NOPRIM002 .          # every surface but return types
-$ noprim check --select NOPRIM004 .          # only Any and object, on parameters
+$ noprim check --ignore NOPRIM002 .          # every default rule but return types
+$ noprim check --extend-select NOPRIM004 .   # the defaults, plus Any on parameters
+$ noprim check --select NOPRIM .             # every rule there is
 ```
+
+An annotation can break two rules at once — `dict[str, Any]` is a primitive and a top
+type — and reports once per rule, so the codes tell you which half to fix.
 
 A denied type counts wherever it appears inside the annotation — `list[str]`,
 `dict[str, UserId]` and `str | None` all count.
@@ -107,6 +111,7 @@ function's name, not one of its own, so it is never skipped this way.
 | `--allow NAME` | Remove a type from the deny-list. Repeatable. |
 | `--deny NAME` | Add a type to the deny-list. Repeatable. |
 | `--select CODE` | Run these rule codes instead of the defaults. Prefixes count. Repeatable. |
+| `--extend-select CODE` | Run these rule codes as well as the selected ones. Repeatable. |
 | `--ignore CODE` | Drop these rule codes from the run. Repeatable. |
 | `--ignore-names NAME` | Skip parameters and attributes called `NAME`. Repeatable. |
 | `--exclude GLOB` | Skip paths while walking. Gitignore syntax, anchored at the config file's directory, or the repo root when there is no config. Repeatable. |
@@ -127,7 +132,7 @@ allow = ["str"]
 deny = ["Enum"]
 exclude = ["generated/**"]
 ignore-names = ["kwargs", "size"]
-select = ["NOPRIM"]
+extend-select = ["NOPRIM004"]
 ignore = ["NOPRIM002"]
 ```
 
@@ -151,8 +156,8 @@ allow = ["str", "int", "bool"]
 ```
 
 Overrides carry `allow` and `deny` only. The remaining keys are whole-run settings:
-`exclude` decides which files are walked at all, and `select`/`ignore` choose rules
-rather than deny-lists.
+`exclude` decides which files are walked at all, and `select`, `extend-select` and
+`ignore` choose rules rather than deny-lists.
 
 Patterns use gitignore syntax, anchored at the directory holding the config, so
 `test_*.py` matches at any depth and `domain/**` does not. Every entry that matches a

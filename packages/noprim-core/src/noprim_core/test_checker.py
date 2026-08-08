@@ -14,7 +14,7 @@ def _config() -> CheckConfig:
 
 
 def _selecting(codes: Selectors) -> CheckConfig:
-    return CheckConfig(selection=selection(codes, Selectors(())))
+    return CheckConfig(selection=selection(codes, Selectors(()), Selectors(())))
 
 
 def _check(source: SourceCode, config: CheckConfig | None = None) -> Arr[Violation]:

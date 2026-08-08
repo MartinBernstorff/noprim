@@ -8,12 +8,8 @@ class RuleCode(RootModel[str]):
     model_config = ConfigDict(frozen=True)
 
 
-class RuleName(RootModel[str]):
-    pass
-
-
 class Selector(RootModel[str]):
-    # A prefix, as in ruff: "NOPRIM" names every rule, "NOPRIM001" names one.
+    # A prefix, as in ruff: "NOPRIM" names every rule, "NOPRIM001" one of them.
     def matches(self, code: RuleCode) -> Verdict:
         return Verdict(code.root.startswith(self.root))
 

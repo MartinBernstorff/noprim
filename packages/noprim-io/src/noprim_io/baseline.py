@@ -43,9 +43,10 @@ class MalformedBaselineError(Exception):
 
 class UnsupportedBaselineVersionError(Exception):
     def __init__(self, path: BaselinePath, version: BaselineVersion) -> None:
+        self.outdated = Verdict(version.root < BaselineVersion.current().root)
         remedy = (
             "rerun with --write-baseline to regenerate it"
-            if version.root < BaselineVersion.current().root
+            if self.outdated.root
             else "upgrade noprim"
         )
         super().__init__(

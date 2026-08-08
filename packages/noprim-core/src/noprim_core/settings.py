@@ -10,7 +10,7 @@ from noprim_core.config import (
     IgnoredNames,
     TopTypes,
 )
-from noprim_core.rules.code import Selectors
+from noprim_core.rules.code import Selection, Selectors
 from noprim_core.rules.registry import selection
 from noprim_core.verdict import Verdict
 
@@ -51,8 +51,8 @@ class NotOnDenyListError(ValueError):
 class AllowedTopTypeError(ValueError):
     def __init__(self, names: AllowedNames) -> None:
         super().__init__(
-            f"allow of a type governed by top-types: {', '.join(names.root)}. "
-            "Drop top-types instead; the rule is all or nothing."
+            f"allow of a type governed by the top-type rules: {', '.join(names.root)}. "
+            "Deselect them instead; those rules are all or nothing."
         )
 
 
@@ -117,12 +117,13 @@ class Settings(BaseModel):
     ignore_names: IgnoredNames = IgnoredNames(frozenset())
     # None, not an empty tuple: unset means the default rules, not no rules.
     select: Selectors | None = None
+    extend_select: Selectors = Selectors(())
     ignore: Selectors = Selectors(())
     per_path: tuple[PathOverride, ...] = ()
 
     @model_validator(mode="after")
     def _names_are_coherent(self) -> Self:
-        _ = selection(self.select, self.ignore)
+        _ = self._selection()
         _validated(self.allow, self.deny, DeniedTypes.default())
         top_level = self._top_level()
         _ = (
@@ -131,6 +132,9 @@ class Settings(BaseModel):
             .to_list()
         )
         return self
+
+    def _selection(self) -> Selection:
+        return selection(self.select, self.extend_select, self.ignore)
 
     def _top_level(self) -> DeniedTypes:
         return _adjusted(DeniedTypes.default(), self.allow, self.deny)
@@ -143,7 +147,7 @@ class Settings(BaseModel):
             .to_list()
         )
         return CheckConfig(
-            selection=selection(self.select, self.ignore),
+            selection=self._selection(),
             denied=_adjusted(
                 top_level,
                 AllowedNames(

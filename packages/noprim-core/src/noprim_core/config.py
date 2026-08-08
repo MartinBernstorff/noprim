@@ -6,10 +6,12 @@ from noprim_core.site import Qualname
 from noprim_core.verdict import Verdict
 
 
-class DeniedTypes(RootModel[frozenset[str]]):
+class NameSet(RootModel[frozenset[str]]):
     def matches(self, names: TypeNames) -> Verdict:
         return Verdict(len(names.root & self.root) > 0)
 
+
+class DeniedTypes(NameSet):
     @classmethod
     def default(cls) -> "DeniedTypes":
         return cls(
@@ -41,10 +43,7 @@ class DeniedTypes(RootModel[frozenset[str]]):
         )
 
 
-class TopTypes(RootModel[frozenset[str]]):
-    def matches(self, names: TypeNames) -> Verdict:
-        return Verdict(len(names.root & self.root) > 0)
-
+class TopTypes(NameSet):
     @classmethod
     def default(cls) -> "TopTypes":
         return cls(frozenset({"Any", "object"}))
