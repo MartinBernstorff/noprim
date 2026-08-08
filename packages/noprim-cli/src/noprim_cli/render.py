@@ -80,14 +80,18 @@ def _message(violation: Violation) -> DisplayText:
 
 
 def _found(report: CheckReport) -> DisplayText:
-    suppressed = len(
-        Arr(report.suppressed).filter(lambda s: bool(s.reason.requested())).to_list()
+    suppressed = Count(
+        len(
+            Arr(report.suppressed)
+            .filter(lambda s: bool(s.reason.requested()))
+            .to_list()
+        )
     )
     clauses = [
         f"found {_plural(Count(len(report.violations)), Noun('violation'))}"
         if len(report.violations) > 0
         else "no violations",
-        *([f"{suppressed} suppressed"] if suppressed > 0 else []),
+        *([f"{suppressed.root} suppressed"] if suppressed.root > 0 else []),
         *(
             [str(_plural(Count(len(report.errors)), Noun("error")))]
             if len(report.errors) > 0

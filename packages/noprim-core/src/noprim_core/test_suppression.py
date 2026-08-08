@@ -64,6 +64,8 @@ def test_reports_a_violation_nothing_suppresses() -> None:
             [SuppressionReason.COMMENT],
         ),
         ("# noprim: ignore[NOPRIM001,NOPRIM002]", "NOPRIM003", []),
+        # Brackets narrow the suppression, so empty brackets narrow it to nothing.
+        ("# noprim: ignore[]", "NOPRIM001", []),
         (
             "# type: ignore  # noprim: ignore[NOPRIM001]",
             "NOPRIM001",
@@ -119,7 +121,6 @@ def test_a_comment_suppresses_only_its_own_line() -> None:
     [
         (Surface.PARAMETER, [SuppressionReason.IGNORED_NAME]),
         (Surface.ATTRIBUTE, [SuppressionReason.IGNORED_NAME]),
-        # A return type carries the function's name, not a symbol name of its own.
         (Surface.RETURN, []),
     ],
 )

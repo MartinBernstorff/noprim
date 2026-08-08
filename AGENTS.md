@@ -43,6 +43,11 @@ rule-specific booleans. Anything the author does not choose (dunder methods,
 `RootModel` bodies, overload implementations) is exempt during the walk and never
 becomes a site.
 
+`Site.owner` is the one fact on a site that no rule reads: who chose the annotation.
+It is there because the walk is the only place that can see it — pytest ownership is
+the enclosing function's name and decorators plus the module's filename — and
+`Suppressions` would otherwise have to walk the tree a second time to re-derive it.
+
 ## Suppressions
 
 Rules fire unconditionally; `noprim_core.suppression` is the one place that decides

@@ -36,10 +36,11 @@ class SuppressionOutcome(BaseModel):
     suppressed: tuple[SuppressedViolation, ...]
 
 
-class IgnoredCodes(RootModel[frozenset[RuleCode]]):
+class IgnoredCodes(RootModel[frozenset[RuleCode] | None]):
+    # None is a comment that wrote no brackets at all, which speaks for every rule.
+    # Brackets narrow the suppression, so empty brackets narrow it to nothing.
     def covers(self, code: RuleCode) -> Verdict:
-        # A comment that names no code speaks for every rule.
-        return Verdict(len(self.root) == 0 or code in self.root)
+        return Verdict(self.root is None or code in self.root)
 
 
 class Comment(RootModel[str]):
@@ -51,10 +52,10 @@ class Comment(RootModel[str]):
         if found is None:
             return None
         spelled = found.group("codes")
+        if spelled is None:
+            return IgnoredCodes(root=None)
         return IgnoredCodes(
-            frozenset()
-            if spelled is None
-            else frozenset(
+            frozenset(
                 Arr(spelled.split(","))
                 .map(str.strip)
                 .filter(lambda code: code != "")
