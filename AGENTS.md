@@ -55,7 +55,7 @@ walking up for the file and reading it through `pydantic-settings`' TOML sources
 
 Two things keep this honest, and both will fail loudly if you break them:
 
-- **Every config key is a CLI flag of the same name.** `test_every_config_key_has_a_flag_of_the_same_name` compares `Settings.model_fields` against `check`'s signature, so adding one without the other fails.
+- **A flag overrides the config key with its own name.** `check` hands its parameters to `_overrides`, which keeps the ones `Settings.model_fields` knows and lets pydantic coerce the raw `list[str]` into the field's type — so a new setting needs a Typer annotation and nothing else. The name is the wiring, and `test_every_flag_that_is_not_run_mode_names_a_config_key` is what stops a mistyped parameter from becoming a flag that silently does nothing.
 - **`LoadedSettings.anchor` is `None` when no config was found.** Patterns then have no directory to hang off, and the walk falls back to the target's repo root — which is what makes `--exclude` behave the same with and without a config file.
 
 ## Python
