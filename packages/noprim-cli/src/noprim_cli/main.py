@@ -14,10 +14,10 @@ from noprim_core.checker import (
     IgnoredNames,
     LineNumber,
     Surface,
-    Verdict,
     Violation,
 )
 from noprim_core.settings import AllowedNames, DeniedNames, PathPatterns, Settings
+from noprim_core.verdict import Verdict
 from noprim_io.baseline import (
     BaselinePath,
     MalformedBaselineError,

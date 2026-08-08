@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from noprim_core.checker import DeniedTypes, Verdict
+from noprim_core.checker import DeniedTypes
 from noprim_core.settings import (
     AllowedAndDeniedError,
     AllowedNames,
@@ -13,6 +13,7 @@ from noprim_core.settings import (
     RelativePath,
     Settings,
 )
+from noprim_core.verdict import Verdict
 
 _ANY = RelativePath("a.py")
 

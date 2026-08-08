@@ -7,6 +7,16 @@ from enum import StrEnum
 from iterpy import Arr
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
+from noprim_core.annotations import (
+    AnnotationText,
+    SymbolName,
+    TypeNames,
+    head_name,
+    is_exactly,
+    names_in,
+)
+from noprim_core.verdict import Verdict
+
 
 class SourceCode(RootModel[str]):
     pass
@@ -29,12 +39,10 @@ class Qualname(RootModel[str]):
         return Qualname(self.root.rsplit(".", 1)[-1])
 
 
-class Verdict(RootModel[bool]):
-    def __bool__(self) -> bool:
-        return self.root
-
-
 class DeniedTypes(RootModel[frozenset[str]]):
+    def matches(self, names: TypeNames) -> Verdict:
+        return Verdict(len(names.root & self.root) > 0)
+
     @classmethod
     def default(cls) -> "DeniedTypes":
         return cls(
@@ -97,21 +105,12 @@ class Surface(StrEnum):
     ATTRIBUTE = "attribute"
 
 
-class AnnotationText(RootModel[str]):
-    model_config = ConfigDict(frozen=True)
-
-
 class LineNumber(RootModel[int]):
     pass
 
 
 class ColumnNumber(RootModel[int]):
     pass
-
-
-class TypeNames(RootModel[frozenset[str]]):
-    def any_denied(self, denied: DeniedTypes) -> Verdict:
-        return Verdict(len(self.root & denied.root) > 0)
 
 
 class Site(BaseModel):
@@ -154,72 +153,8 @@ class IgnoredLines(RootModel[frozenset[int]]):
 Function = ast.FunctionDef | ast.AsyncFunctionDef
 
 
-class SymbolName(RootModel[str]):
-    pass
-
-
-def _head_name(expression: ast.expr) -> SymbolName:
-    match expression:
-        case ast.Name(id=name) | ast.Attribute(attr=name):
-            return SymbolName(name)
-        case ast.Subscript(value=value) | ast.Call(func=value):
-            return _head_name(value)
-        case _:
-            # Unresolvable expressions get "", which no deny-list entry can match.
-            return SymbolName("")
-
-
 def _mentions(expressions: Arr[ast.expr], symbol: SymbolName) -> Verdict:
-    return Verdict(
-        expressions.filter(lambda e: _head_name(e) == symbol).to_list() != []
-    )
-
-
-def _parsed_names(text: AnnotationText) -> TypeNames:
-    try:
-        return _annotation_names(ast.parse(text.root, mode="eval").body)
-    except SyntaxError:
-        return TypeNames(frozenset())
-
-
-def _union_of_names(expressions: Arr[ast.expr]) -> TypeNames:
-    return TypeNames(
-        frozenset().union(*expressions.map(lambda e: _annotation_names(e).root))
-    )
-
-
-def _annotation_names(annotation: ast.expr) -> TypeNames:
-    match annotation:
-        case ast.Name(id=name) | ast.Attribute(attr=name):
-            return TypeNames(frozenset({name}))
-        case ast.Subscript(value=value, slice=inner):
-            # Literal's arguments are values, not types.
-            return (
-                TypeNames(frozenset())
-                if _head_name(value) == SymbolName("Literal")
-                else _annotation_names(inner)
-            )
-        case ast.BinOp(left=left, right=right):
-            return _union_of_names(Arr([left, right]))
-        case ast.Tuple(elts=elts) | ast.List(elts=elts):
-            return _union_of_names(Arr(elts))
-        case ast.Constant(value=str() as text):
-            return _parsed_names(AnnotationText(text))
-        case _:
-            return TypeNames(frozenset())
-
-
-def _annotates_bool(annotation: ast.expr) -> Verdict:
-    match annotation:
-        case ast.Name(id="bool") | ast.Attribute(attr="bool"):
-            return Verdict(root=True)
-        case ast.Constant(value=str() as text):
-            try:
-                return _annotates_bool(ast.parse(text, mode="eval").body)
-            except SyntaxError:
-                return Verdict(root=False)
-        case _:
-            return Verdict(root=False)
+    return Verdict(expressions.filter(lambda e: head_name(e) == symbol).to_list() != [])
 
 
 def _site(
@@ -231,10 +166,11 @@ def _site(
         surface=surface,
         qualname=qualname,
         annotation=AnnotationText(ast.unparse(annotation)),
-        names=_annotation_names(annotation),
+        names=names_in(annotation),
         pytest_owned=pytest_owned,
         predicate_return=Verdict(
-            surface == Surface.RETURN and _annotates_bool(annotation).root
+            surface == Surface.RETURN
+            and is_exactly(annotation, SymbolName("bool")).root
         ),
     )
 
@@ -385,7 +321,7 @@ def check_source(
     exempt = _is_pytest_module(filename)
     return (
         _sites_in(tree.body, Qualname(""))
-        .filter(lambda site: bool(site.names.any_denied(config.all_denied())))
+        .filter(lambda site: bool(config.all_denied().matches(site.names)))
         .filter(lambda site: not bool(bool(exempt) and site.pytest_owned))
         .filter(
             lambda site: (
