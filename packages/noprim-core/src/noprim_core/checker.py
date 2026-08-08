@@ -101,7 +101,7 @@ class Site(BaseModel):
     annotation: AnnotationText
     names: TypeNames
     pytest_owned: Verdict
-    predicate: Verdict
+    predicate_return: Verdict
 
 
 class Violation(BaseModel):
@@ -212,7 +212,7 @@ def _site(
         annotation=AnnotationText(ast.unparse(annotation)),
         names=_annotation_names(annotation),
         pytest_owned=pytest_owned,
-        predicate=Verdict(
+        predicate_return=Verdict(
             surface == Surface.RETURN and _annotates_bool(annotation).root
         ),
     )
@@ -359,7 +359,11 @@ def check_source(
         _sites_in(tree.body, Qualname(""))
         .filter(lambda site: bool(site.names.any_denied(config.denied)))
         .filter(lambda site: not bool(bool(exempt) and site.pytest_owned))
-        .filter(lambda site: bool(config.check_predicates) or not bool(site.predicate))
+        .filter(
+            lambda site: (
+                bool(config.check_predicates) or not bool(site.predicate_return)
+            )
+        )
         .filter(lambda site: site.line.root not in ignored.root)
         .map(
             lambda site: Violation(

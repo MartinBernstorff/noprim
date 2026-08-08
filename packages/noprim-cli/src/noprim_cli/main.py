@@ -181,7 +181,7 @@ def _resolve_config(
 # Typer derives the command-line interface from these annotations: a RootModel here
 # would be parsed as one opaque argument, losing the flag names and the arity.
 @app.command()
-def check(
+def check(  # noqa: PLR0913, PLR0917
     paths: Annotated[  # noprim: ignore
         list[Path] | None, typer.Argument(help="Files or directories to check.")
     ] = None,
