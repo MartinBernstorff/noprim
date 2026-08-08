@@ -21,6 +21,7 @@ from noprim_core.site import (
     Qualname,
     Surface,
 )
+from noprim_core.suppression import SuppressedViolation, SuppressionReason
 from noprim_core.verdict import Verdict
 from noprim_core.violation import Violation
 from noprim_io.baseline import BaselinePath
@@ -53,11 +54,25 @@ def _report(
     violations: tuple[Violation, ...],
     errors: tuple[FileError, ...],
     checked: Count,
+    suppressed: tuple[SuppressedViolation, ...] = (),
 ) -> CheckReport:
     return CheckReport(
         violations=violations,
         errors=errors,
         checked=tuple(SourceFile(Path(f"f{n}.py")) for n in range(checked.root)),
+        suppressed=suppressed,
+    )
+
+
+def _suppressed(
+    reason: SuppressionReason, count: Count
+) -> tuple[SuppressedViolation, ...]:
+    return tuple(
+        SuppressedViolation(
+            violation=_at(Filename("a.py"), LineNumber(n + 1), ColumnNumber(1)),
+            reason=reason,
+        )
+        for n in range(count.root)
     )
 
 
@@ -191,11 +206,29 @@ def test_interleaves_file_errors_with_violations() -> None:
         (
             RunOutcome(
                 report=_report(
-                    (), (_error(Filename("a.py"), LineNumber(1)),), Count(1)
-                ),
-                suppressed=Count(3),
+                    (),
+                    (_error(Filename("a.py"), LineNumber(1)),),
+                    Count(1),
+                    _suppressed(SuppressionReason.BASELINE, Count(3)),
+                )
             ),
-            "no violations, 3 suppressed by baseline, 1 error",
+            "no violations, 3 suppressed, 1 error",
+        ),
+        (
+            RunOutcome(
+                report=_report(
+                    (), (), Count(1), _suppressed(SuppressionReason.COMMENT, Count(2))
+                )
+            ),
+            "no violations, 2 suppressed",
+        ),
+        (
+            RunOutcome(
+                report=_report(
+                    (), (), Count(1), _suppressed(SuppressionReason.PYTEST, Count(2))
+                )
+            ),
+            "no violations",
         ),
     ],
 )

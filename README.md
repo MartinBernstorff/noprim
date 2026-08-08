@@ -90,8 +90,11 @@ def check(
 ) -> None: ...
 ```
 
-The comment suppresses only the line it sits on, and must end the line — which leaves
-`# noprim: ignore[RULE]` free for later.
+The comment suppresses only the line it sits on, and must end the line. Name codes in
+brackets to suppress just those — `# noprim: ignore[NOPRIM002]`, or
+`# noprim: ignore[NOPRIM001, NOPRIM002]` — and leave the brackets off to suppress
+every rule on the line. A code that no rule answers to suppresses nothing, so check
+the spelling.
 
 When a framework dictates the same name everywhere — `factory_boy` hooks take `kwargs`,
 `size`, `create` and `extracted` — suppressing it line by line is busywork. Skip the

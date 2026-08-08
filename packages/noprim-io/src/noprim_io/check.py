@@ -4,9 +4,11 @@ import pathspec
 from iterpy import Arr
 from pydantic import BaseModel, Field, RootModel
 
-from noprim_core.checker import SourceCode, check_source
+from noprim_core.checker import check_source
 from noprim_core.config import CheckConfig
 from noprim_core.site import ColumnNumber, Filename, LineNumber
+from noprim_core.source import SourceCode
+from noprim_core.suppression import SuppressedViolation
 from noprim_core.verdict import Verdict
 from noprim_core.violation import Violation
 from noprim_io.paths import (
@@ -48,6 +50,7 @@ class CheckReport(BaseModel):
     violations: tuple[Violation, ...]
     errors: tuple[FileError, ...]
     checked: tuple[SourceFile, ...]
+    suppressed: tuple[SuppressedViolation, ...] = ()
 
 
 class _AnchoredSpec(BaseModel):
@@ -193,12 +196,17 @@ def _file_error(file: SourceFile, error: UnicodeDecodeError | SyntaxError) -> Fi
 def _check_one(file: SourceFile, config: CheckConfig) -> CheckReport:
     try:
         source = SourceCode(file.root.read_text())
-        violations = check_source(source, Filename(str(file.root)), config)
+        outcome = check_source(source, Filename(str(file.root)), config)
     except (UnicodeDecodeError, SyntaxError) as error:
         return CheckReport(
             violations=(), errors=(_file_error(file, error),), checked=(file,)
         )
-    return CheckReport(violations=tuple(violations), errors=(), checked=(file,))
+    return CheckReport(
+        violations=outcome.reported,
+        errors=(),
+        checked=(file,),
+        suppressed=outcome.suppressed,
+    )
 
 
 def check_paths(paths: CheckPaths, config: DiscoveryConfig) -> CheckReport:
@@ -211,4 +219,5 @@ def check_paths(paths: CheckPaths, config: DiscoveryConfig) -> CheckReport:
         violations=tuple(Arr(reports).map(lambda r: r.violations).flatten()),
         errors=tuple(Arr(reports).map(lambda r: r.errors).flatten()),
         checked=tuple(Arr(reports).map(lambda r: r.checked).flatten()),
+        suppressed=tuple(Arr(reports).map(lambda r: r.suppressed).flatten()),
     )

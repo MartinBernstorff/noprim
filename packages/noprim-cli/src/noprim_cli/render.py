@@ -47,7 +47,6 @@ class WrittenBaseline(BaseModel):
 
 class RunOutcome(BaseModel):
     report: CheckReport
-    suppressed: Count = Count(0)
     stale: Count = Count(0)
     written: WrittenBaseline | None = None
 
@@ -80,12 +79,19 @@ def _message(violation: Violation) -> DisplayText:
     return DisplayText(f"{violation.code.root} {rule.message(violation).root}")
 
 
-def _found(report: CheckReport, suppressed: Count) -> DisplayText:
+def _found(report: CheckReport) -> DisplayText:
+    suppressed = Count(
+        len(
+            Arr(report.suppressed)
+            .filter(lambda s: bool(s.reason.requested()))
+            .to_list()
+        )
+    )
     clauses = [
         f"found {_plural(Count(len(report.violations)), Noun('violation'))}"
         if len(report.violations) > 0
         else "no violations",
-        *([f"{suppressed.root} suppressed by baseline"] if suppressed.root > 0 else []),
+        *([f"{suppressed.root} suppressed"] if suppressed.root > 0 else []),
         *(
             [str(_plural(Count(len(report.errors)), Noun("error")))]
             if len(report.errors) > 0
@@ -155,7 +161,7 @@ def _summary_line(
 
 def _summary(outcome: RunOutcome) -> DisplayText:
     if outcome.written is None:
-        return _found(outcome.report, outcome.suppressed)
+        return _found(outcome.report)
     written = _plural(outcome.written.written, Noun("violation"))
     return DisplayText(f"wrote {written} to {outcome.written.path.root}")
 
@@ -199,7 +205,11 @@ def baseline_written(
 
 def baseline_applied(report: CheckReport, outcome: BaselineOutcome) -> RunOutcome:
     return RunOutcome(
-        report=report.model_copy(update={"violations": outcome.reported}),
-        suppressed=Count(len(outcome.suppressed)),
+        report=report.model_copy(
+            update={
+                "violations": outcome.reported,
+                "suppressed": report.suppressed + outcome.suppressed,
+            }
+        ),
         stale=Count(len(outcome.stale)),
     )

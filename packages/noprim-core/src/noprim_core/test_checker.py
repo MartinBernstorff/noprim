@@ -1,11 +1,12 @@
 import pytest
 from iterpy import Arr
 
-from noprim_core.checker import SourceCode, check_source
+from noprim_core.checker import check_source
 from noprim_core.config import CheckConfig, IgnoredNames
 from noprim_core.rules.code import Selector, Selectors
 from noprim_core.rules.registry import default_selection, selection
 from noprim_core.site import Filename, Surface
+from noprim_core.source import SourceCode
 from noprim_core.violation import Violation
 
 
@@ -18,9 +19,15 @@ def _selecting(codes: Selectors) -> CheckConfig:
 
 
 def _check(source: SourceCode, config: CheckConfig | None = None) -> Arr[Violation]:
-    return check_source(
+    return _reported(
         source, Filename("a.py"), config if config is not None else _config()
     )
+
+
+def _reported(
+    source: SourceCode, filename: Filename, config: CheckConfig
+) -> Arr[Violation]:
+    return Arr(check_source(source, filename, config).reported)
 
 
 def test_flags_primitive_parameter() -> None:
@@ -212,7 +219,7 @@ def test_reports_overload_stubs_only() -> None:
 
 @pytest.mark.parametrize("filename", ["test_thing.py", "thing_test.py"])
 def test_exempts_parameters_of_test_functions(filename: str) -> None:
-    violations = check_source(
+    violations = _reported(
         SourceCode(
             "def test_walks(tmp_path: Path, expected: list[str]) -> None: ...\n"
         ),
@@ -226,7 +233,7 @@ def test_exempts_parameters_of_test_functions(filename: str) -> None:
     "decorator", ["@pytest.fixture", "@fixture", "@pytest.fixture(scope='session')"]
 )
 def test_exempts_parameters_of_fixtures(decorator: str) -> None:
-    violations = check_source(
+    violations = _reported(
         SourceCode(f"{decorator}\ndef repo(tmp_path: Path) -> Repo: ...\n"),
         Filename("test_thing.py"),
         _config(),
@@ -248,7 +255,7 @@ def test_exempts_parameters_of_fixtures(decorator: str) -> None:
 def test_exemption_covers_only_test_function_parameters(
     filename: str, source: str
 ) -> None:
-    violations = check_source(SourceCode(source), Filename(filename), _config())
+    violations = _reported(SourceCode(source), Filename(filename), _config())
     assert len(list(violations)) == 1
 
 
@@ -295,7 +302,9 @@ def test_ignored_names_leave_return_types_alone() -> None:
             ["f"],
         ),
         ("def f(x: str) -> None: ...  # type: ignore  # noprim: ignore\n", []),
-        ("def f(x: str) -> None: ...  # noprim: ignore[NOPRIM002]\n", ["f.x"]),
+        ("def f(x: str) -> str: ...  # noprim: ignore[NOPRIM002]\n", ["f.x"]),
+        ("def f(x: str) -> str: ...  # noprim: ignore[NOPRIM001, NOPRIM002]\n", []),
+        ("def f(x: str) -> str: ...  # noprim: ignore[NOPRIM003]\n", ["f.x", "f"]),
         ("def f(x: str) -> None: ...  # noprim: ignore  # legacy\n", ["f.x"]),
         ("def f(x: str) -> None: ...  # noqa\n", ["f.x"]),
     ],
@@ -304,3 +313,30 @@ def test_ignore_comment_suppresses_only_its_own_line(
     source: str, expected: list[str]
 ) -> None:
     assert [v.qualname.root for v in _check(SourceCode(source))] == expected
+
+
+@pytest.mark.parametrize(
+    ("source", "reasons"),
+    [
+        ("def f(x: str) -> None: ...  # noprim: ignore\n", ["comment"]),
+        ("def f(x: str) -> None: ...\n", []),
+    ],
+)
+def test_a_suppressed_violation_says_why_it_was_not_reported(
+    source: str, reasons: list[str]
+) -> None:
+    outcome = check_source(SourceCode(source), Filename("a.py"), _config())
+
+    assert [str(s.reason) for s in outcome.suppressed] == reasons
+
+
+def test_pytest_parameters_are_suppressed_rather_than_never_found() -> None:
+    outcome = check_source(
+        SourceCode("def test_walks(tmp_path: Path) -> None: ...\n"),
+        Filename("test_thing.py"),
+        _config(),
+    )
+
+    assert [s.violation.qualname.root for s in outcome.suppressed] == [
+        "test_walks.tmp_path"
+    ]

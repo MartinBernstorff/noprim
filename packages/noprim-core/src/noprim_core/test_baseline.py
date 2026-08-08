@@ -15,6 +15,7 @@ from noprim_core.site import (
     Qualname,
     Surface,
 )
+from noprim_core.suppression import SuppressionReason
 from noprim_core.violation import Violation
 
 
@@ -63,7 +64,8 @@ def test_reports_violations_absent_from_the_baseline() -> None:
     )
 
     assert [v.qualname.root for v in outcome.reported] == ["f.b"]
-    assert [v.qualname.root for v in outcome.suppressed] == ["f.a"]
+    assert [s.violation.qualname.root for s in outcome.suppressed] == ["f.a"]
+    assert outcome.suppressed[0].reason == SuppressionReason.BASELINE
 
 
 def test_treats_an_unmatched_entry_in_a_walked_file_as_stale() -> None:

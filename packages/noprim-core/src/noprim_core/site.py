@@ -22,6 +22,12 @@ class Qualname(RootModel[str]):
         return Qualname(self.root.rsplit(".", 1)[-1])
 
 
+class Owner(StrEnum):
+    # Who chose the annotation: pytest dictates the signature of tests and fixtures.
+    AUTHOR = "author"
+    PYTEST = "pytest"
+
+
 class Surface(StrEnum):
     PARAMETER = "parameter"
     RETURN = "return"
@@ -29,7 +35,8 @@ class Surface(StrEnum):
 
 
 class LineNumber(RootModel[int]):
-    pass
+    # Used as a key when looking up the suppressions written on a line.
+    model_config = ConfigDict(frozen=True)
 
 
 class ColumnNumber(RootModel[int]):
@@ -43,3 +50,4 @@ class Site(BaseModel):
     qualname: Qualname
     annotation: AnnotationText
     names: TypeNames
+    owner: Owner = Owner.AUTHOR

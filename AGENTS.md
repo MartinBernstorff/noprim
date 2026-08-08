@@ -35,15 +35,37 @@ once touch disjoint files.
 Codes number by smell *and* by surface (`NOPRIM001` primitive parameter, `NOPRIM002`
 primitive return, ...), because the surface is the axis people actually want to turn
 off: a codebase can drown in return types while its parameters are fine. Both halves
-are a public commitment — baselines and, later, `# noprim: ignore[NOPRIM002]` encode
-them.
+are a public commitment — baselines and `# noprim: ignore[NOPRIM002]` encode them.
 
-The pipeline is: walk to `Site`s, drop the suppressed ones, then for each site ask
-each selected rule. `Site` carries raw syntactic facts only — no rule-specific
-booleans. Anything the author does not choose (dunder methods, `RootModel` bodies,
-overload implementations, pytest test and fixture parameters) is exempt during the
-walk and never becomes a site; `# noprim: ignore` and `ignore-names` drop sites before
-the rules run. Neither is a rule.
+The pipeline is: walk to `Site`s, ask each selected rule at every site, then hand the
+violations to `Suppressions`. `Site` carries raw syntactic facts only — no
+rule-specific booleans. Anything the author does not choose (dunder methods,
+`RootModel` bodies, overload implementations) is exempt during the walk and never
+becomes a site.
+
+`Site.owner` is the one fact on a site that no rule reads: who chose the annotation.
+It is there because the walk is the only place that can see it — pytest ownership is
+the enclosing function's name and decorators plus the module's filename — and
+`Suppressions` would otherwise have to walk the tree a second time to re-derive it.
+
+## Suppressions
+
+Rules fire unconditionally; `noprim_core.suppression` is the one place that decides
+whether a violation is reported, and returns `(reported, suppressed)` rather than a
+silently shortened list. Each suppressed violation names its `SuppressionReason` —
+`comment`, `ignored-name`, `pytest` or `baseline` — so "why was this not reported?"
+has a single answer, and the summary can count them all rather than just the
+baseline's. Suppression is not a rule.
+
+`# noprim: ignore` covers every code on its line; `# noprim: ignore[NOPRIM002]` covers
+the ones it names. The comment must end the line, so a suppression cannot hide behind
+trailing prose.
+
+`SuppressionReason.requested()` is what the summary counts: pytest owning a test or
+fixture signature is structural, like a dunder method being exempt, and counting those
+would swamp the suppressions the author actually wrote. The baseline suppresses later,
+at the CLI, because keying an entry needs a path relative to the repo — but it hands
+back the same `SuppressedViolation`s and joins the same count.
 
 ## Settings
 
