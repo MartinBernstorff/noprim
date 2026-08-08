@@ -18,14 +18,14 @@ def _plain(output: DisplayText) -> DisplayText:
 def test_reports_each_surface_ruff_style(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
     _ = target.write_text(
-        "def greet(user_id: str) -> Any: ...\nclass Thing:\n    email: str\n"
+        "def greet(user_id: str) -> int: ...\nclass Thing:\n    email: str\n"
     )
 
     result = runner.invoke(app, ["check", str(target)])
 
     assert result.stdout.splitlines() == [
         f'{target}:1:20: parameter "user_id" is annotated "str"',
-        f'{target}:1:28: return type is annotated "Any"',
+        f'{target}:1:28: return type is annotated "int"',
         f'{target}:3:12: attribute "email" is annotated "str"',
     ]
 
@@ -160,13 +160,54 @@ def test_summary_counts_unreadable_files_apart_from_violations(tmp_path: Path) -
 
 def test_allow_removes_type_from_deny_list(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
-    _ = target.write_text("def f(x: Any) -> str: ...\n")
+    _ = target.write_text("def f(x: int) -> str: ...\n")
 
-    result = runner.invoke(app, ["check", "--allow", "Any", str(target)])
+    result = runner.invoke(app, ["check", "--allow", "int", str(target)])
 
     assert result.stdout.splitlines() == [
         f'{target}:1:18: return type is annotated "str"'
     ]
+
+
+@pytest.mark.parametrize("annotation", ["Any", "object"])
+@pytest.mark.parametrize(("flags", "expected"), [([], 0), (["--top-types"], 1)])
+def test_top_types_are_reported_only_when_opted_into(
+    tmp_path: Path, annotation: str, flags: list[str], expected: int
+) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text(f"def f(x: {annotation}) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", *flags, str(target)])
+
+    assert result.exit_code == expected
+    assert (f'parameter "x" is annotated "{annotation}"' in result.stdout) == (
+        expected == 1
+    )
+
+
+@pytest.mark.parametrize("flags", [[], ["--top-types"]])
+def test_allow_of_a_top_type_exits_two(tmp_path: Path, flags: list[str]) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(x: Any) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", *flags, "--allow", "Any", str(target)])
+
+    assert result.exit_code == 2
+    assert (
+        "--allow of a type governed by --top-types: Any"
+        in _plain(DisplayText(result.output)).root
+    )
+
+
+def test_deny_of_a_top_type_reports_it_without_the_flag(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(x: Any, y: object) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", "--deny", "Any", str(target)])
+
+    assert result.exit_code == 1
+    assert 'parameter "x" is annotated "Any"' in result.stdout
+    assert 'parameter "y"' not in result.stdout
 
 
 def test_predicates_are_skipped_until_asked_for(tmp_path: Path) -> None:

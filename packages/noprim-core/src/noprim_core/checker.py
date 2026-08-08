@@ -58,11 +58,15 @@ class DeniedTypes(RootModel[frozenset[str]]):
                     "set",
                     "frozenset",
                     "tuple",
-                    "Any",
-                    "object",
                 }
             )
         )
+
+
+class TopTypes(RootModel[frozenset[str]]):
+    @classmethod
+    def default(cls) -> "TopTypes":
+        return cls(frozenset({"Any", "object"}))
 
 
 class IgnoredNames(RootModel[frozenset[str]]):
@@ -74,6 +78,14 @@ class CheckConfig(BaseModel):
     denied: DeniedTypes = Field(default_factory=DeniedTypes.default)
     check_predicates: Verdict = Verdict(root=False)
     ignored_names: IgnoredNames = IgnoredNames(frozenset())
+    # A top type says the type is unknown, not that it is too narrow, so it is a
+    # different smell from primitive obsession and is opted into on its own.
+    top_types: Verdict = Verdict(root=False)
+
+    def all_denied(self) -> DeniedTypes:
+        if not self.top_types.root:
+            return self.denied
+        return DeniedTypes(self.denied.root | TopTypes.default().root)
 
 
 class Surface(StrEnum):
@@ -370,7 +382,7 @@ def check_source(
     exempt = _is_pytest_module(filename)
     return (
         _sites_in(tree.body, Qualname(""))
-        .filter(lambda site: bool(site.names.any_denied(config.denied)))
+        .filter(lambda site: bool(site.names.any_denied(config.all_denied())))
         .filter(lambda site: not bool(bool(exempt) and site.pytest_owned))
         .filter(
             lambda site: (

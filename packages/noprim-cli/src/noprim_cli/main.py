@@ -14,6 +14,7 @@ from noprim_core import (
     IgnoredNames,
     LineNumber,
     Surface,
+    TopTypes,
     Verdict,
     Violation,
 )
@@ -48,6 +49,14 @@ class NotOnDenyListError(typer.BadParameter):
     def __init__(self, names: AllowedNames) -> None:
         super().__init__(
             f"--allow of a name that is not on the deny-list: {', '.join(names.root)}"
+        )
+
+
+class AllowedTopTypeError(typer.BadParameter):
+    def __init__(self, names: AllowedNames) -> None:
+        super().__init__(
+            f"--allow of a type governed by --top-types: {', '.join(names.root)}. "
+            "Drop --top-types instead; the rule is all or nothing."
         )
 
 
@@ -165,6 +174,7 @@ def _resolve_config(
     deny: DeniedNames,
     check_predicates: Verdict,
     ignore_names: IgnoredNames,
+    top_types: Verdict,
 ) -> CheckConfig:
     default = DeniedTypes.default().root
     # "" is the sentinel for unresolvable annotations, so denying it matches everything.
@@ -173,6 +183,9 @@ def _resolve_config(
     conflicting = sorted(set(allow.root) & set(deny.root))
     if len(conflicting) > 0:
         raise AllowedAndDeniedError(AllowedNames(tuple(conflicting)))
+    top = sorted(set(allow.root) & TopTypes.default().root)
+    if len(top) > 0:
+        raise AllowedTopTypeError(AllowedNames(tuple(top)))
     unknown = sorted(set(allow.root) - default)
     if len(unknown) > 0:
         raise NotOnDenyListError(AllowedNames(tuple(unknown)))
@@ -180,6 +193,7 @@ def _resolve_config(
         denied=DeniedTypes((default - set(allow.root)) | set(deny.root)),
         check_predicates=check_predicates,
         ignored_names=ignore_names,
+        top_types=top_types,
     )
 
 
@@ -216,6 +230,10 @@ def check(  # noqa: PLR0913, PLR0917
             help="Report functions returning bool instead of skipping them.",
         ),
     ] = False,
+    top_types: Annotated[  # noprim: ignore
+        bool,
+        typer.Option("--top-types", help="Also report Any and object. Off by default."),
+    ] = False,
     quiet: Annotated[  # noprim: ignore
         bool, typer.Option("--quiet", "-q", help="Suppress the summary.")
     ] = False,
@@ -225,6 +243,7 @@ def check(  # noqa: PLR0913, PLR0917
         DeniedNames(tuple(deny if deny is not None else ())),
         Verdict(check_predicates),
         IgnoredNames(frozenset(ignore_names if ignore_names is not None else ())),
+        Verdict(top_types),
     )
 
     targets = tuple(paths) if paths is not None else (Path.cwd(),)

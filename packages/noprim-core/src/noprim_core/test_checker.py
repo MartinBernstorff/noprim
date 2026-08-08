@@ -30,7 +30,7 @@ def test_flags_primitive_parameter() -> None:
 
 
 def test_locates_violations_at_the_annotation() -> None:
-    violations = _check(SourceCode("def greet(name: str) -> Any: ...\n"))
+    violations = _check(SourceCode("def greet(name: str) -> int: ...\n"))
     assert [(v.line.root, v.column.root) for v in violations] == [(1, 17), (1, 25)]
 
 
@@ -142,13 +142,33 @@ def test_ignores_annotations_outside_class_bodies(source: str) -> None:
         "set",
         "frozenset",
         "tuple",
-        "Any",
-        "object",
     ],
 )
 def test_default_deny_list(annotation: str) -> None:
     violations = _check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"))
     assert [v.annotation.root for v in violations] == [annotation]
+
+
+@pytest.mark.parametrize("annotation", ["Any", "object"])
+def test_top_types_are_not_denied_by_default(annotation: str) -> None:
+    assert list(_check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"))) == []
+
+
+@pytest.mark.parametrize("annotation", ["Any", "object", "dict[str, Any]"])
+def test_top_types_reported_when_rule_is_enabled(annotation: str) -> None:
+    config = CheckConfig(top_types=Verdict(root=True))
+    violations = _check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"), config)
+    assert [v.annotation.root for v in violations] == [annotation]
+
+
+def test_top_types_rule_leaves_the_deny_list_alone() -> None:
+    config = CheckConfig(
+        denied=DeniedTypes(frozenset({"Name"})), top_types=Verdict(root=True)
+    )
+    violations = _check(
+        SourceCode("def f(x: Name, y: Any, z: str) -> None: ...\n"), config
+    )
+    assert [v.qualname.root for v in violations] == ["f.x", "f.y"]
 
 
 @pytest.mark.parametrize("annotation", ["datetime.datetime", "dt.datetime"])
