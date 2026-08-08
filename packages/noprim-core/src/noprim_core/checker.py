@@ -19,6 +19,7 @@ from noprim_core.site import (
 )
 from noprim_core.source import SourceCode
 from noprim_core.suppression import (
+    IgnoredFile,
     IgnoredLines,
     PytestOwned,
     SuppressionOutcome,
@@ -216,6 +217,7 @@ def _suppressions(
     source: SourceCode, sites: Arr[Site], config: CheckConfig
 ) -> Suppressions:
     return Suppressions(
+        file=IgnoredFile.parse(source),
         lines=IgnoredLines.parse(source),
         names=config.ignored_names,
         pytest_owned=PytestOwned(

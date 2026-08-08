@@ -13,6 +13,7 @@ from noprim_core.site import (
 )
 from noprim_core.source import SourceCode
 from noprim_core.suppression import (
+    IgnoredFile,
     IgnoredLines,
     PytestOwned,
     SuppressionOutcome,
@@ -90,6 +91,47 @@ def test_a_comment_suppresses_the_codes_it_names(
                     LineNumber(1),
                     RuleCode(code),
                     Surface.PARAMETER,
+                )
+            ]
+        )
+    )
+
+    assert _reasons(outcome).to_list() == expected
+
+
+@pytest.mark.parametrize(
+    ("source", "code", "expected"),
+    [
+        ("# noprim: ignore-file\n", "NOPRIM001", [SuppressionReason.FILE_COMMENT]),
+        (
+            "#!/usr/bin/env python\n# noprim: ignore-file\n",
+            "NOPRIM001",
+            [SuppressionReason.FILE_COMMENT],
+        ),
+        (
+            "# noprim: ignore-file[NOPRIM002, NOPRIM003]\n",
+            "NOPRIM002",
+            [SuppressionReason.FILE_COMMENT],
+        ),
+        ("# noprim: ignore-file[NOPRIM002, NOPRIM003]\n", "NOPRIM001", []),
+        ("# noprim: ignore-file[]\n", "NOPRIM001", []),
+        # A line-level comment is not a file-level one, and vice versa.
+        ("# noprim: ignore\n", "NOPRIM001", []),
+        ("x = 1\n# noprim: ignore-file\n", "NOPRIM001", []),
+        ('"""Docstring."""\n# noprim: ignore-file\n', "NOPRIM001", []),
+        ("# noprim: ignore-file  # legacy\n", "NOPRIM001", []),
+    ],
+)
+def test_a_leading_comment_suppresses_the_whole_file(
+    source: str, code: str, expected: list[SuppressionReason]
+) -> None:
+    suppressions = Suppressions(file=IgnoredFile.parse(SourceCode(source)))
+
+    outcome = suppressions.apply(
+        Arr(
+            [
+                _violation(
+                    Qualname("f.x"), LineNumber(9), RuleCode(code), Surface.PARAMETER
                 )
             ]
         )
