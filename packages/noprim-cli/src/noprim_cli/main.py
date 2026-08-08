@@ -187,6 +187,13 @@ def check(  # noqa: PLR0913, PLR0917
             help="Skip attributes matching this glob. Repeatable.",
         ),
     ] = None,
+    ignore_inner_classes: Annotated[  # noprim: ignore
+        list[str] | None,
+        typer.Option(
+            "--ignore-inner-classes",
+            help="Skip the body of a nested class matching this glob. Repeatable.",
+        ),
+    ] = None,
     exclude: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option("--exclude", help="Glob to skip while walking. Repeatable."),

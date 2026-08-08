@@ -108,6 +108,7 @@ class NameKeys(BaseModel):
     ignore_names: NamePatterns = NamePatterns(())
     ignore_param_names: NamePatterns = NamePatterns(())
     ignore_attribute_names: NamePatterns = NamePatterns(())
+    ignore_inner_classes: NamePatterns = NamePatterns(())
 
     def parameter_names(self) -> NamePatterns:
         return self.ignore_names.joined(self.ignore_param_names)
@@ -158,6 +159,11 @@ class PathOverrides(RootModel[tuple[PathOverride, ...]]):
     def attribute_names(self) -> NamePatterns:
         return NamePatterns(
             self._gathered(lambda override: override.attribute_names().root)
+        )
+
+    def inner_classes(self) -> NamePatterns:
+        return NamePatterns(
+            self._gathered(lambda override: override.ignore_inner_classes.root)
         )
 
 
@@ -215,5 +221,8 @@ class Settings(NameKeys):
             ),
             ignored_attribute_names=self.attribute_names().joined(
                 matching.attribute_names()
+            ),
+            ignored_inner_classes=self.ignore_inner_classes.joined(
+                matching.inner_classes()
             ),
         )

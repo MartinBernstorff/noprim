@@ -22,6 +22,15 @@ class Qualname(RootModel[str]):
         return Qualname(self.root.rsplit(".", 1)[-1])
 
 
+class ClassChain(RootModel[tuple[Qualname, ...]]):
+    def child(self, name: Qualname) -> "ClassChain":
+        return ClassChain((*self.root, name))
+
+    # The outermost class is the one the module declares; every class below it is inner.
+    def inner(self) -> "ClassChain":
+        return ClassChain(self.root[1:])
+
+
 class Owner(StrEnum):
     # Who chose the annotation: pytest dictates the signature of tests and fixtures.
     AUTHOR = "author"
@@ -51,3 +60,4 @@ class Site(BaseModel):
     annotation: AnnotationText
     names: TypeNames
     owner: Owner = Owner.AUTHOR
+    enclosing_classes: ClassChain = ClassChain(())

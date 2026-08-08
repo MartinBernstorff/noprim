@@ -19,6 +19,7 @@ class SuppressionReason(StrEnum):
     COMMENT = "comment"
     FILE_COMMENT = "file-comment"
     IGNORED_NAME = "ignored-name"
+    INNER_CLASS = "inner-class"
     PYTEST = "pytest"
     BASELINE = "baseline"
 
@@ -161,7 +162,9 @@ class IgnoredFile(RootModel[IgnoredCodes | None]):
         return self.root.covers(violation.code)
 
 
-class PytestOwned(RootModel[frozenset[Qualname]]):
+# The walk is the only place that can see who chose an annotation, so it hands over
+# the qualnames rather than the tree these readings would each have to walk again.
+class OwnedQualnames(RootModel[frozenset[Qualname]]):
     def covers(self, violation: Violation) -> Verdict:
         return Verdict(violation.qualname in self.root)
 
@@ -171,7 +174,8 @@ class Suppressions(BaseModel):
     lines: IgnoredLines = IgnoredLines({})
     parameter_names: NamePatterns = NamePatterns(())
     attribute_names: NamePatterns = NamePatterns(())
-    pytest_owned: PytestOwned = PytestOwned(frozenset())
+    inner_class_owned: OwnedQualnames = OwnedQualnames(frozenset())
+    pytest_owned: OwnedQualnames = OwnedQualnames(frozenset())
 
     def _patterns_for(self, surface: Surface) -> NamePatterns:
         match surface:
@@ -193,6 +197,8 @@ class Suppressions(BaseModel):
             return SuppressionReason.COMMENT
         if self._named_as_ignored(violation):
             return SuppressionReason.IGNORED_NAME
+        if self.inner_class_owned.covers(violation):
+            return SuppressionReason.INNER_CLASS
         if self.pytest_owned.covers(violation):
             return SuppressionReason.PYTEST
         return None

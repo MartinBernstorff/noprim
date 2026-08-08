@@ -15,7 +15,7 @@ from noprim_core.source import SourceCode
 from noprim_core.suppression import (
     IgnoredFile,
     IgnoredLines,
-    PytestOwned,
+    OwnedQualnames,
     SuppressionOutcome,
     SuppressionReason,
     Suppressions,
@@ -240,7 +240,7 @@ def test_an_ignored_name_matches_as_a_glob(
 
 def test_pytest_owns_the_parameters_it_names() -> None:
     suppressions = Suppressions(
-        pytest_owned=PytestOwned(frozenset({Qualname("test_walks.tmp_path")}))
+        pytest_owned=OwnedQualnames(frozenset({Qualname("test_walks.tmp_path")}))
     )
 
     outcome = suppressions.apply(

@@ -104,7 +104,7 @@ the enclosing function's name and decorators plus the module's filename — and
 Rules fire unconditionally; `noprim_core.suppression` is the one place that decides
 whether a violation is reported, and returns `(reported, suppressed)` rather than a
 silently shortened list. Each suppressed violation names its `SuppressionReason` —
-`comment`, `file-comment`, `ignored-name`, `pytest` or `baseline` — so "why was this
+`comment`, `file-comment`, `ignored-name`, `inner-class`, `pytest` or `baseline` — so "why was this
 not reported?" has a single answer, and the summary can count them all rather than just
 the baseline's. Suppression is not a rule.
 
@@ -155,11 +155,21 @@ They suppress by surface, not by code, so ignoring a parameter name silences eve
 that fires on a parameter — `NOPRIM004` as well as `NOPRIM001`. The author is saying the
 name is not theirs to choose, which is true of the whole annotation or none of it.
 
+`ignore-inner-classes` names a *place* rather than a surface, so it is a fourth key —
+also an override key — and deliberately not part of `ignore-names`: it covers everything
+inside a class nested in another class, which is what a framework-dictated `class Meta`
+is. Only a class-in-a-class matches. A module-level class of that name is one the author
+chose, and a class defined in a function is not the framework's block either; only the
+walk can tell those apart, so `Enclosing` carries the chain of enclosing *classes* and
+`ClassChain.inner()` drops the outermost. Like pytest ownership it suppresses rather than
+skips, so the block still shows up in the `N suppressed` count.
+
 An override's patterns are appended to the top level's and compiled as one spec, so
 gitignore's last-match-wins holds across the join: a per-path `!value` re-includes a name
 the top level ignored, which is how a directory says the framework's excuse stops here.
 
-An override carries `allow`, `deny`, `ignore` and the `ignore-*-names` keys. `ignore`
+An override carries `allow`, `deny`, `ignore`, the `ignore-*-names` keys and
+`ignore-inner-classes`. `ignore`
 names rule codes and only ever *subtracts* — there is deliberately no per-path `select`,
 so the top-level selection stays the ceiling and `--select NOPRIM001` still means only
 `NOPRIM001` ran.
