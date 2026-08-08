@@ -3,7 +3,7 @@ from noprim_core.baseline import BaselineKey as BaselineKey
 from noprim_core.baseline import BaselineOutcome as BaselineOutcome
 from noprim_core.baseline import KeyedViolation as KeyedViolation
 from noprim_core.baseline import KeyedViolations as KeyedViolations
-from noprim_core.baseline import WalkedFiles as WalkedFiles
+from noprim_core.baseline import PrunableFiles as PrunableFiles
 from noprim_core.baseline import apply_baseline as apply_baseline
 from noprim_core.checker import CheckConfig as CheckConfig
 from noprim_core.checker import DeniedTypes as DeniedTypes

@@ -20,7 +20,7 @@ The per-package `pyproject.toml` files are **not** distributions — they have n
 
 **Check the baseline into git.** It is shared debt: a gitignored one means every developer and CI silently suppresses something different.
 
-A `check` run never writes to disk. Entries that no longer match are ignored and reported on stderr; they are pruned the next time the file is written. Only entries under a path the run actually walked are prune candidates, so re-baselining a subdirectory leaves the rest of the file alone.
+Once the file exists, a `check` run never writes to disk. Entries that no longer match are ignored and reported on stderr; they are pruned the next time the file is written. Prune candidates are only the files the run actually analysed, plus entries under a checked path whose file is gone — so re-baselining a subdirectory leaves the rest of the file alone, and a file that stopped parsing keeps its entries rather than losing them to a syntax error.
 
 ## Python
 

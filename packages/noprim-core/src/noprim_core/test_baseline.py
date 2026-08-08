@@ -3,7 +3,7 @@ from noprim_core.baseline import (
     BaselineKey,
     KeyedViolation,
     KeyedViolations,
-    WalkedFiles,
+    PrunableFiles,
     apply_baseline,
 )
 from noprim_core.checker import Surface, Violation
@@ -42,7 +42,7 @@ def test_reports_violations_absent_from_the_baseline() -> None:
     outcome = apply_baseline(
         _keyed("f.a", "f.b"),
         Baseline(frozenset({_key("f.a")})),
-        WalkedFiles(frozenset({"src/a.py"})),
+        PrunableFiles(frozenset({"src/a.py"})),
     )
 
     assert [v.qualname for v in outcome.reported] == ["f.b"]
@@ -53,7 +53,7 @@ def test_treats_an_unmatched_entry_in_a_walked_file_as_stale() -> None:
     outcome = apply_baseline(
         _keyed("f.a"),
         Baseline(frozenset({_key("f.a"), _key("f.gone")})),
-        WalkedFiles(frozenset({"src/a.py"})),
+        PrunableFiles(frozenset({"src/a.py"})),
     )
 
     assert outcome.stale == (_key("f.gone"),)
@@ -70,7 +70,7 @@ def test_keeps_entries_for_files_this_run_never_walked() -> None:
     outcome = apply_baseline(
         _keyed("f.a"),
         Baseline(frozenset({_key("f.a"), elsewhere})),
-        WalkedFiles(frozenset({"src/a.py"})),
+        PrunableFiles(frozenset({"src/a.py"})),
     )
 
     assert outcome.stale == ()
@@ -81,7 +81,7 @@ def test_regenerates_from_the_violations_this_run_found() -> None:
     outcome = apply_baseline(
         _keyed("f.a", "f.new"),
         Baseline(frozenset({_key("f.a"), _key("f.gone")})),
-        WalkedFiles(frozenset({"src/a.py"})),
+        PrunableFiles(frozenset({"src/a.py"})),
     )
 
     assert outcome.regenerated.root == frozenset({_key("f.a"), _key("f.new")})
@@ -95,7 +95,7 @@ def test_suppresses_a_violation_that_moved_to_another_line() -> None:
     outcome = apply_baseline(
         moved,
         Baseline(frozenset({_key("f.a")})),
-        WalkedFiles(frozenset({"src/a.py"})),
+        PrunableFiles(frozenset({"src/a.py"})),
     )
 
     assert outcome.reported == ()

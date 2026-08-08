@@ -349,6 +349,40 @@ def test_write_baseline_keeps_entries_for_files_it_did_not_walk(
     assert sorted({key.filename for key in recorded.root}) == ["a/one.py", "b/two.py"]
 
 
+def test_keeps_entries_for_a_file_that_stopped_parsing(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(a: int) -> None: ...\n")
+    baseline = tmp_path / ".noprim.json"
+    _ = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+
+    _ = target.write_text("def f(a: int -> None:\n")
+    result = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+    _ = runner.invoke(
+        app,
+        ["check", "--baseline", str(baseline), "--write-baseline", str(tmp_path)],
+    )
+
+    assert "no longer match" not in result.stderr
+    recorded = read_baseline(BaselinePath(baseline))
+    assert {key.filename for key in recorded.root} == {"bad.py"}
+
+
+def test_write_baseline_drops_entries_for_deleted_files(tmp_path: Path) -> None:
+    _ = (tmp_path / "gone.py").write_text("def f(a: int) -> None: ...\n")
+    _ = (tmp_path / "kept.py").write_text("def g(b: int) -> None: ...\n")
+    baseline = tmp_path / ".noprim.json"
+    _ = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+
+    (tmp_path / "gone.py").unlink()
+    _ = runner.invoke(
+        app,
+        ["check", "--baseline", str(baseline), "--write-baseline", str(tmp_path)],
+    )
+
+    recorded = read_baseline(BaselinePath(baseline))
+    assert {key.filename for key in recorded.root} == {"kept.py"}
+
+
 def test_write_baseline_without_a_path_is_rejected(tmp_path: Path) -> None:
     _ = (tmp_path / "bad.py").write_text("def f(a: int) -> None: ...\n")
 

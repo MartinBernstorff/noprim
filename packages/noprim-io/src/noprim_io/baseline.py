@@ -4,15 +4,17 @@ from pathlib import Path
 from iterpy import Arr
 from pydantic import BaseModel, RootModel, ValidationError
 
-from noprim_core import Surface, Violation
-from noprim_core.baseline import (
+from noprim_core import (
     Baseline,
     BaselineKey,
+    Filename,
     KeyedViolation,
     KeyedViolations,
-    WalkedFiles,
+    PrunableFiles,
+    Surface,
+    Violation,
 )
-from noprim_io.check import repo_root
+from noprim_io.check import CheckPaths, CheckReport, repo_root
 
 
 class BaselinePath(RootModel[Path]):
@@ -20,10 +22,6 @@ class BaselinePath(RootModel[Path]):
 
 
 class Violations(RootModel[tuple[Violation, ...]]):
-    pass
-
-
-class Filenames(RootModel[tuple[str, ...]]):
     pass
 
 
@@ -62,8 +60,8 @@ def _anchor(path: BaselinePath) -> Path:
     return root if (root / ".git").exists() else directory
 
 
-def _relative(filename: str, anchor: Path) -> str:
-    return Path(filename).resolve().relative_to(anchor, walk_up=True).as_posix()
+def _relative(filename: Filename, anchor: Path) -> str:
+    return Path(filename.root).resolve().relative_to(anchor, walk_up=True).as_posix()
 
 
 def keyed_violations(violations: Violations, path: BaselinePath) -> KeyedViolations:
@@ -73,7 +71,7 @@ def keyed_violations(violations: Violations, path: BaselinePath) -> KeyedViolati
             Arr(violations.root).map(
                 lambda violation: KeyedViolation(
                     key=BaselineKey(
-                        filename=_relative(violation.filename, anchor),
+                        filename=_relative(Filename(violation.filename), anchor),
                         surface=violation.surface,
                         qualname=violation.qualname,
                         annotation=violation.annotation,
@@ -85,11 +83,39 @@ def keyed_violations(violations: Violations, path: BaselinePath) -> KeyedViolati
     )
 
 
-def walked_files(filenames: Filenames, path: BaselinePath) -> WalkedFiles:
-    anchor = _anchor(path)
-    return WalkedFiles(
-        frozenset(Arr(filenames.root).map(lambda name: _relative(name, anchor)))
+def _within(candidate: Path, targets: CheckPaths) -> bool:
+    return (
+        Arr(targets.root)
+        .map(lambda target: target.resolve())
+        .any(lambda target: candidate == target or target in candidate.parents)
     )
+
+
+def prunable_files(
+    report: CheckReport, targets: CheckPaths, baseline: Baseline, path: BaselinePath
+) -> PrunableFiles:
+    anchor = _anchor(path)
+    unreadable = frozenset(
+        Arr(report.errors).map(
+            lambda error: _relative(Filename(error.filename), anchor)
+        )
+    )
+    # A file noprim could not parse yields no evidence that its entries are stale.
+    analysed = (
+        frozenset(
+            Arr(report.checked).map(lambda name: _relative(Filename(name), anchor))
+        )
+        - unreadable
+    )
+    vanished = frozenset(
+        Arr(baseline.root)
+        .map(lambda key: (anchor / key.filename).resolve())
+        .filter(
+            lambda candidate: _within(candidate, targets) and not candidate.exists()
+        )
+        .map(lambda candidate: _relative(Filename(str(candidate)), anchor))
+    )
+    return PrunableFiles(analysed | vanished)
 
 
 def read_baseline(path: BaselinePath) -> Baseline:

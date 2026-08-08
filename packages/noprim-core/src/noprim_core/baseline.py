@@ -26,7 +26,7 @@ class KeyedViolations(RootModel[tuple[KeyedViolation, ...]]):
     pass
 
 
-class WalkedFiles(RootModel[frozenset[str]]):
+class PrunableFiles(RootModel[frozenset[str]]):
     pass
 
 
@@ -38,12 +38,12 @@ class BaselineOutcome(BaseModel):
 
 
 def apply_baseline(
-    keyed: KeyedViolations, baseline: Baseline, walked: WalkedFiles
+    keyed: KeyedViolations, baseline: Baseline, prunable: PrunableFiles
 ) -> BaselineOutcome:
     entries = Arr(keyed.root)
     found = frozenset(entries.map(lambda e: e.key))
     untouched = frozenset(
-        Arr(baseline.root).filter(lambda key: key.filename not in walked.root)
+        Arr(baseline.root).filter(lambda key: key.filename not in prunable.root)
     )
     return BaselineOutcome(
         reported=tuple(

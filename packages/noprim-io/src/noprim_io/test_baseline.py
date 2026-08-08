@@ -4,19 +4,18 @@ from typing import Any, cast
 
 import pytest
 
-from noprim_core import Surface, Violation
-from noprim_core.baseline import Baseline, BaselineKey
+from noprim_core import Baseline, BaselineKey, Surface, Violation
 from noprim_io.baseline import (
     BaselinePath,
-    Filenames,
     MalformedBaselineError,
     UnsupportedBaselineVersionError,
     Violations,
     keyed_violations,
+    prunable_files,
     read_baseline,
-    walked_files,
     write_baseline,
 )
+from noprim_io.check import CheckPaths, CheckReport, FileError
 
 
 def _key(filename: str = "src/a.py", qualname: str = "f.a") -> BaselineKey:
@@ -87,11 +86,70 @@ def test_keys_violations_relative_to_the_repo_above_the_baseline(
     assert [entry.key.filename for entry in keyed.root] == ["src/a.py"]
 
 
+def _report(
+    checked: tuple[str, ...], errors: tuple[FileError, ...] = ()
+) -> CheckReport:
+    return CheckReport(violations=(), errors=errors, checked=checked)
+
+
 def test_keys_relative_to_the_baseline_directory_without_a_repo(
     tmp_path: Path,
 ) -> None:
     path = BaselinePath(tmp_path / ".noprim.json")
+    (tmp_path / "src").mkdir()
+    analysed = tmp_path / "src" / "a.py"
+    _ = analysed.write_text("")
 
-    walked = walked_files(Filenames((str(tmp_path / "src" / "a.py"),)), path)
+    prunable = prunable_files(
+        _report((str(analysed),)),
+        CheckPaths((tmp_path,)),
+        Baseline.empty(),
+        path,
+    )
 
-    assert walked.root == frozenset({"src/a.py"})
+    assert prunable.root == frozenset({"src/a.py"})
+
+
+def test_a_file_that_would_not_parse_is_not_prunable(tmp_path: Path) -> None:
+    path = BaselinePath(tmp_path / ".noprim.json")
+    broken = tmp_path / "broken.py"
+    _ = broken.write_text("")
+    error = FileError(
+        filename=str(broken), line=1, column=1, message="syntax error: nope"
+    )
+
+    prunable = prunable_files(
+        _report((str(broken),), (error,)),
+        CheckPaths((tmp_path,)),
+        Baseline.empty(),
+        path,
+    )
+
+    assert prunable.root == frozenset()
+
+
+def test_an_entry_whose_file_is_gone_is_prunable(tmp_path: Path) -> None:
+    path = BaselinePath(tmp_path / ".noprim.json")
+
+    prunable = prunable_files(
+        _report(()),
+        CheckPaths((tmp_path,)),
+        Baseline(frozenset({_key(filename="deleted.py")})),
+        path,
+    )
+
+    assert prunable.root == frozenset({"deleted.py"})
+
+
+def test_an_entry_outside_the_run_is_not_prunable(tmp_path: Path) -> None:
+    path = BaselinePath(tmp_path / ".noprim.json")
+    (tmp_path / "inside").mkdir()
+
+    prunable = prunable_files(
+        _report(()),
+        CheckPaths((tmp_path / "inside",)),
+        Baseline(frozenset({_key(filename="outside/deleted.py")})),
+        path,
+    )
+
+    assert prunable.root == frozenset()
