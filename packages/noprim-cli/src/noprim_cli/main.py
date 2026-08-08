@@ -7,39 +7,30 @@ import typer
 from iterpy import Arr
 from pydantic import BaseModel, RootModel, ValidationError
 
-from noprim_core import (
-    AllowedNames,
-    Baseline,
-    BaselineOutcome,
+from noprim_core.baseline import Baseline, BaselineOutcome, apply_baseline
+from noprim_core.checker import (
     ColumnNumber,
-    DeniedNames,
     Filename,
     IgnoredNames,
     LineNumber,
-    PathPatterns,
-    Settings,
     Surface,
     Verdict,
     Violation,
-    apply_baseline,
 )
-from noprim_io import (
+from noprim_core.settings import AllowedNames, DeniedNames, PathPatterns, Settings
+from noprim_io.baseline import (
     BaselinePath,
-    CheckPaths,
-    CheckReport,
-    DiscoveryConfig,
-    ExistingDirectory,
-    LoadedSettings,
     MalformedBaselineError,
     UnsupportedBaselineVersionError,
     Violations,
-    check_paths,
     keyed_violations,
-    load_settings,
     prunable_files,
     read_baseline,
     write_baseline,
 )
+from noprim_io.check import CheckPaths, CheckReport, DiscoveryConfig, check_paths
+from noprim_io.paths import ExistingDirectory
+from noprim_io.settings import LoadedSettings, load_settings
 
 
 class ConfigError(typer.BadParameter):

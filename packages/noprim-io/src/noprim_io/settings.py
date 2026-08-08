@@ -10,7 +10,8 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
-from noprim_core import CheckConfig, PathPatterns, RelativePath, Settings, Verdict
+from noprim_core.checker import CheckConfig, Verdict
+from noprim_core.settings import PathPatterns, RelativePath, Settings
 from noprim_io.paths import ExistingDirectory, SourceFile, ancestry, repo_root
 
 
