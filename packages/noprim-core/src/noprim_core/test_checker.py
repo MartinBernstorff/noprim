@@ -2,7 +2,7 @@ import pytest
 from iterpy import Arr
 
 from noprim_core.checker import check_source
-from noprim_core.config import CheckConfig, IgnoredNames
+from noprim_core.config import CheckConfig, NamePatterns
 from noprim_core.rules.code import Selector, Selectors
 from noprim_core.rules.preset import Preset
 from noprim_core.rules.registry import default_selection, selection
@@ -270,7 +270,7 @@ def test_private_functions_still_report() -> None:
 def test_ignores_configured_symbol_names() -> None:
     config = CheckConfig(
         selection=default_selection(),
-        ignored_names=IgnoredNames(frozenset({"kwargs"})),
+        ignored_parameter_names=NamePatterns(("kwargs",)),
     )
     violations = _check(
         SourceCode("def f(x: str, **kwargs: str) -> None: ...\n"), config
@@ -281,13 +281,28 @@ def test_ignores_configured_symbol_names() -> None:
 def test_ignored_names_leave_return_types_alone() -> None:
     config = CheckConfig(
         selection=default_selection(),
-        ignored_names=IgnoredNames(frozenset({"size", "f"})),
+        ignored_parameter_names=NamePatterns(("size", "f")),
+        ignored_attribute_names=NamePatterns(("size", "f")),
     )
     violations = _check(
         SourceCode("class Thing:\n    size: int\n\ndef f(y: Name) -> str: ...\n"),
         config,
     )
     assert [(v.qualname.root, v.surface) for v in violations] == [("f", Surface.RETURN)]
+
+
+def test_a_parameter_and_an_attribute_of_one_name_are_ignored_apart() -> None:
+    config = CheckConfig(
+        selection=default_selection(),
+        ignored_parameter_names=NamePatterns(("value",)),
+    )
+    violations = _check(
+        SourceCode("class Thing:\n    value: int\n\ndef f(value: str) -> None: ...\n"),
+        config,
+    )
+    assert [(v.qualname.root, v.surface) for v in violations] == [
+        ("Thing.value", Surface.ATTRIBUTE)
+    ]
 
 
 @pytest.mark.parametrize(

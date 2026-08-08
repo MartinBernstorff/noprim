@@ -111,7 +111,21 @@ def check(  # noqa: PLR0913, PLR0917
         list[str] | None,
         typer.Option(
             "--ignore-names",
-            help="Skip parameters and attributes with this name. Repeatable.",
+            help="Skip parameters and attributes matching this glob. Repeatable.",
+        ),
+    ] = None,
+    ignore_param_names: Annotated[  # noprim: ignore
+        list[str] | None,
+        typer.Option(
+            "--ignore-param-names",
+            help="Skip parameters matching this glob. Repeatable.",
+        ),
+    ] = None,
+    ignore_attribute_names: Annotated[  # noprim: ignore
+        list[str] | None,
+        typer.Option(
+            "--ignore-attribute-names",
+            help="Skip attributes matching this glob. Repeatable.",
         ),
     ] = None,
     exclude: Annotated[  # noprim: ignore

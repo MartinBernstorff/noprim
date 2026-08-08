@@ -6,7 +6,7 @@ from enum import StrEnum
 from iterpy import Arr
 from pydantic import BaseModel, RootModel
 
-from noprim_core.config import IgnoredNames
+from noprim_core.config import NamePatterns
 from noprim_core.rules.code import RuleCode
 from noprim_core.site import LineNumber, Qualname, Surface
 from noprim_core.source import SourceCode
@@ -93,14 +93,22 @@ class PytestOwned(RootModel[frozenset[Qualname]]):
 
 class Suppressions(BaseModel):
     lines: IgnoredLines = IgnoredLines({})
-    names: IgnoredNames = IgnoredNames(frozenset())
+    parameter_names: NamePatterns = NamePatterns(())
+    attribute_names: NamePatterns = NamePatterns(())
     pytest_owned: PytestOwned = PytestOwned(frozenset())
 
+    def _patterns_for(self, surface: Surface) -> NamePatterns:
+        match surface:
+            case Surface.PARAMETER:
+                return self.parameter_names
+            case Surface.ATTRIBUTE:
+                return self.attribute_names
+            # A return type carries the function's name, not a symbol name of its own.
+            case Surface.RETURN:
+                return NamePatterns(())
+
     def _named_as_ignored(self, violation: Violation) -> Verdict:
-        # A return type carries the function's name, not a symbol name of its own.
-        return Verdict(violation.surface != Surface.RETURN).and_(
-            self.names.contains(violation.qualname.leaf())
-        )
+        return self._patterns_for(violation.surface).matches(violation.qualname.leaf())
 
     def reason_for(self, violation: Violation) -> SuppressionReason | None:
         if self.lines.covers(violation):

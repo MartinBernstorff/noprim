@@ -217,7 +217,8 @@ def _suppressions(
 ) -> Suppressions:
     return Suppressions(
         lines=IgnoredLines.parse(source),
-        names=config.ignored_names,
+        parameter_names=config.ignored_parameter_names,
+        attribute_names=config.ignored_attribute_names,
         pytest_owned=PytestOwned(
             frozenset(
                 sites.filter(lambda site: site.owner == Owner.PYTEST).map(

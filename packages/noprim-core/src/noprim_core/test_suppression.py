@@ -2,7 +2,7 @@ import pytest
 from iterpy import Arr
 
 from noprim_core.annotations import AnnotationText
-from noprim_core.config import IgnoredNames
+from noprim_core.config import NamePatterns
 from noprim_core.rules.code import RuleCode
 from noprim_core.site import (
     ColumnNumber,
@@ -117,18 +117,34 @@ def test_a_comment_suppresses_only_its_own_line() -> None:
 
 
 @pytest.mark.parametrize(
-    ("surface", "expected"),
+    ("suppressions", "surface", "expected"),
     [
-        (Surface.PARAMETER, [SuppressionReason.IGNORED_NAME]),
-        (Surface.ATTRIBUTE, [SuppressionReason.IGNORED_NAME]),
-        (Surface.RETURN, []),
+        (
+            Suppressions(parameter_names=NamePatterns(("kwargs",))),
+            Surface.PARAMETER,
+            [SuppressionReason.IGNORED_NAME],
+        ),
+        (Suppressions(parameter_names=NamePatterns(("kwargs",))), Surface.RETURN, []),
+        (
+            Suppressions(parameter_names=NamePatterns(("kwargs",))),
+            Surface.ATTRIBUTE,
+            [],
+        ),
+        (
+            Suppressions(attribute_names=NamePatterns(("kwargs",))),
+            Surface.ATTRIBUTE,
+            [SuppressionReason.IGNORED_NAME],
+        ),
+        (
+            Suppressions(attribute_names=NamePatterns(("kwargs",))),
+            Surface.PARAMETER,
+            [],
+        ),
     ],
 )
-def test_an_ignored_name_leaves_return_types_alone(
-    surface: Surface, expected: list[SuppressionReason]
+def test_a_name_is_ignored_on_the_surface_it_names(
+    suppressions: Suppressions, surface: Surface, expected: list[SuppressionReason]
 ) -> None:
-    suppressions = Suppressions(names=IgnoredNames(frozenset({"kwargs"})))
-
     outcome = suppressions.apply(
         Arr(
             [
@@ -140,6 +156,28 @@ def test_an_ignored_name_leaves_return_types_alone(
                 )
             ]
         )
+    )
+
+    assert _reasons(outcome).to_list() == expected
+
+
+@pytest.mark.parametrize(
+    ("pattern", "name", "expected"),
+    [
+        ("kwargs", "kwargs", [SuppressionReason.IGNORED_NAME]),
+        ("kwargs", "kwargs_2", []),
+        ("*_contains", "name_contains", [SuppressionReason.IGNORED_NAME]),
+        ("is_*", "is_ready", [SuppressionReason.IGNORED_NAME]),
+        ("is_*", "ready", []),
+    ],
+)
+def test_an_ignored_name_matches_as_a_glob(
+    pattern: str, name: str, expected: list[SuppressionReason]
+) -> None:
+    suppressions = Suppressions(parameter_names=NamePatterns((pattern,)))
+
+    outcome = suppressions.apply(
+        Arr([_parameter(Qualname(f"f.{name}"), LineNumber(1))])
     )
 
     assert _reasons(outcome).to_list() == expected

@@ -1,3 +1,4 @@
+import pathspec
 from pydantic import BaseModel, Field, RootModel
 
 from noprim_core.annotations import TypeNames
@@ -49,9 +50,13 @@ class TopTypes(NameSet):
         return cls(frozenset({"Any", "object"}))
 
 
-class IgnoredNames(RootModel[frozenset[str]]):
-    def contains(self, name: Qualname) -> Verdict:
-        return Verdict(name.root in self.root)
+class NamePatterns(RootModel[tuple[str, ...]]):
+    def matches(self, name: Qualname) -> Verdict:
+        spec = pathspec.PathSpec.from_lines("gitignore", self.root)
+        return Verdict(spec.match_file(name.root))
+
+    def joined(self, other: "NamePatterns") -> "NamePatterns":
+        return NamePatterns(self.root + other.root)
 
 
 class CheckConfig(BaseModel):
@@ -61,4 +66,5 @@ class CheckConfig(BaseModel):
     # Separate from the deny-list: a top type says the type is unknown rather than
     # too narrow, so allowing one of them is a different decision.
     top_types: TopTypes = Field(default_factory=TopTypes.default)
-    ignored_names: IgnoredNames = IgnoredNames(frozenset())
+    ignored_parameter_names: NamePatterns = NamePatterns(())
+    ignored_attribute_names: NamePatterns = NamePatterns(())

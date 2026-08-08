@@ -95,7 +95,16 @@ walking up for the file and reading it through `pydantic-settings`' TOML sources
 `all` exist, because a rule is either on by default or it is not — there is no third
 tier for a `strict` between them to name.
 
-An override carries `allow`, `deny` and `ignore`. `ignore` names rule codes and only
+A name-matching key comes in three: `ignore-param-names` and `ignore-attribute-names`
+name one surface each, and `ignore-names` is the pair of them, kept because it predates
+the split. A surface is the axis that matters — a framework dictating `value` as a
+parameter says nothing about a class attribute of that name — and there is no third key
+for returns, which carry the function's name rather than one of their own. All three
+take gitignore patterns rather than exact names, matched by `pathspec` against the
+qualname's leaf, and all three are override keys too.
+
+An override carries `allow`, `deny`, `ignore` and the `ignore-*-names` keys. `ignore`
+names rule codes and only
 ever *subtracts* — there is deliberately no per-path `select`, so the top-level
 selection stays the ceiling and `--select NOPRIM001` still means only `NOPRIM001` ran.
 It deselects rather than suppresses: the rule never fires, so nothing reaches
