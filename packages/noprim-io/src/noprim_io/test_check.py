@@ -151,24 +151,22 @@ def _make_repo(directory: ExistingDirectory) -> None:
 
 def test_respects_a_gitignore_above_the_walked_directory(tmp_path: Path) -> None:
     _make_repo(ExistingDirectory(tmp_path))
-    root = tmp_path
-    _ = (root / ".gitignore").write_text("generated.py\n")
-    _ = (root / "src" / "generated.py").write_text("def f(a: int) -> None: ...\n")
-    _ = (root / "src" / "kept.py").write_text("def g(b: int) -> None: ...\n")
+    _ = (tmp_path / ".gitignore").write_text("generated.py\n")
+    _ = (tmp_path / "src" / "generated.py").write_text("def f(a: int) -> None: ...\n")
+    _ = (tmp_path / "src" / "kept.py").write_text("def g(b: int) -> None: ...\n")
 
-    report = check_paths(CheckPaths((root / "src",)), DiscoveryConfig())
+    report = check_paths(CheckPaths((tmp_path / "src",)), DiscoveryConfig())
 
     assert [_leaf(v).root for v in report.violations] == ["b"]
 
 
 def test_exclude_globs_are_relative_to_the_repo_root(tmp_path: Path) -> None:
     _make_repo(ExistingDirectory(tmp_path))
-    root = tmp_path
-    _ = (root / "src" / "old.py").write_text("def f(a: int) -> None: ...\n")
-    _ = (root / "src" / "kept.py").write_text("def g(b: int) -> None: ...\n")
+    _ = (tmp_path / "src" / "old.py").write_text("def f(a: int) -> None: ...\n")
+    _ = (tmp_path / "src" / "kept.py").write_text("def g(b: int) -> None: ...\n")
 
     report = check_paths(
-        CheckPaths((root / "src",)),
+        CheckPaths((tmp_path / "src",)),
         DiscoveryConfig(excludes=IgnorePatterns(("/src/old.py",))),
     )
 

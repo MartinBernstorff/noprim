@@ -4,7 +4,7 @@ from typing import Annotated
 
 import typer
 from iterpy import Arr
-from pydantic import RootModel
+from pydantic import RootModel, ValidationError
 
 from noprim_core import CheckConfig, DeniedTypes, Surface, Violation
 from noprim_io import (
@@ -176,7 +176,9 @@ def check(
                 source=source,
             ),
         )
-    except OSError as error:
+    # A directory can vanish between being listed and being walked, which surfaces
+    # as ExistingDirectory failing to validate rather than as an OSError.
+    except (OSError, ValidationError) as error:
         typer.echo(f"error: {error}", err=True)
         raise typer.Exit(2) from error
     elapsed = Duration(perf_counter() - started)

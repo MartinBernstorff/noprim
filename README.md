@@ -30,6 +30,10 @@ The deny-list covers the builtins (`int`, `str`, `float`, `bool`, `bytes`,
 (`list`, `dict`, `set`, `frozenset`, `tuple`) and the escape hatches (`Any`,
 `object`). Adjust it per run with `--allow` and `--deny`.
 
+A container matches only when it is bare: `list` is reported, `list[Name]` is not,
+because the annotation names a collection of a type that is already meaningful. It is
+the contents that are judged, so `list[str]` is reported for the `str`.
+
 ## What is exempt
 
 Some signatures are not the author's to choose, so noprim does not report them:
@@ -76,10 +80,14 @@ things worth recording:
 - **`X | None` was invisible.** The checker matched `Optional[str]` but not the PEP 604
   spelling, because `ast.BinOp` had no case. Nothing in the repo caught it until the
   tool was pointed at code that used unions.
-- **Booleans resist wrapping.** `Verdict` is a `RootModel[bool]` with `__bool__`, but
-  `iterpy`'s `.filter()` is typed `Callable[[T], bool]`, so wrapped predicates need a
-  `# pyrefly: ignore` at the call site until iterpy accepts anything boolish. There are
-  8 such suppressions, split between `implicit-bool` and `bad-argument-type`.
+- **Booleans resist wrapping.** `Verdict` is a `RootModel[bool]` with `__bool__`, which
+  pyrefly rejects in both directions: `.filter()` is typed `Callable[[T], bool]` and
+  will not take a `Verdict`-returning predicate (2 `bad-argument-type` suppressions),
+  and `preset = "all"` forbids implicit truthiness (6 `implicit-bool` suppressions).
+  The second group could be spelled `.root` instead; the suppressions are deliberate,
+  so that the call sites read as booleans and every one of them disappears when iterpy
+  accepts anything boolish.
 - **Frameworks own some signatures.** Typer reads the command's annotations to build
-  the CLI, so those five parameters carry `# noprim: ignore`. pytest's ownership of
-  test signatures was frequent enough to become a rule rather than 40 comments.
+  the CLI, so those five parameters carry `# noprim: ignore`, as does one test double
+  bound to `Path.is_dir`'s signature. pytest's ownership of test signatures was
+  frequent enough to become a rule rather than 40 comments.

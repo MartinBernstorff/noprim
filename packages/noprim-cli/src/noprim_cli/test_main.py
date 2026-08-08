@@ -266,3 +266,23 @@ def test_invalid_flags_fail_before_walking_paths(tmp_path: Path) -> None:
 )
 def test_pretty_duration(seconds: float, expected: str) -> None:
     assert pretty_duration(Duration(seconds)).root == expected
+
+
+def test_a_directory_vanishing_mid_walk_exits_two(tmp_path: Path) -> None:
+    doomed = tmp_path / "doomed"
+    doomed.mkdir()
+    real_is_dir = Path.is_dir
+
+    # Stands in for Path.is_dir, so it is bound to that signature.
+    def vanish(self: Path) -> bool:  # noprim: ignore
+        verdict = real_is_dir(self)
+        if self == doomed and doomed.exists():
+            doomed.rmdir()
+        return verdict
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(Path, "is_dir", vanish)
+        result = runner.invoke(app, ["check", str(tmp_path)])
+
+    assert result.exit_code == 2
+    assert "doomed" in _plain(DisplayText(result.output)).root
