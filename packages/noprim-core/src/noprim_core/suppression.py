@@ -11,8 +11,8 @@ from noprim_core.config import NamePatterns
 from noprim_core.rules.code import RuleCode
 from noprim_core.site import LineNumber, Qualname, Surface
 from noprim_core.source import SourceCode
-from noprim_core.verdict import Verdict
 from noprim_core.violation import Violation
+from noprim_types.verdict import Verdict
 
 
 class SuppressionReason(StrEnum):

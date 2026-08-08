@@ -5,8 +5,8 @@ from pydantic import RootModel
 from noprim_core.config import CheckConfig
 from noprim_core.rules.code import RuleCode
 from noprim_core.site import Site, Surface
-from noprim_core.verdict import Verdict
 from noprim_core.violation import Violation
+from noprim_types.verdict import Verdict
 
 
 class RuleMessage(RootModel[str]):

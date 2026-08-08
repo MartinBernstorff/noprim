@@ -24,7 +24,7 @@ from noprim_core.settings import (
     Settings,
 )
 from noprim_core.site import Qualname
-from noprim_core.verdict import Verdict
+from noprim_types.verdict import Verdict
 
 _ANY = RelativePath("a.py")
 

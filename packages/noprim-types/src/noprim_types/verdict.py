@@ -1,4 +1,5 @@
-from iterpy import Arr
+from collections.abc import Iterable
+
 from pydantic import RootModel
 
 
@@ -17,5 +18,5 @@ class Verdict(RootModel[bool]):
         return Verdict(not self.root)
 
     @classmethod
-    def any(cls, verdicts: Arr["Verdict"]) -> "Verdict":
-        return cls(verdicts.any(lambda verdict: verdict.root))
+    def any(cls, verdicts: Iterable["Verdict"]) -> "Verdict":
+        return cls(any(verdict.root for verdict in verdicts))

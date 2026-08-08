@@ -1,6 +1,6 @@
 target-version = "py313"
 line-length = 88
-src = ["packages/noprim-core/src", "packages/noprim-io/src", "packages/noprim-cli/src"]
+src = ["packages/noprim-types/src", "packages/noprim-core/src", "packages/noprim-io/src", "packages/noprim-cli/src"]
 
 [lint]
 select = [
@@ -43,7 +43,7 @@ ignore = ["E501"]
 "**/test_*.py" = ["PLR2004"]
 
 [lint.isort]
-known-first-party = ["noprim_core", "noprim_io", "noprim_cli"]
+known-first-party = ["noprim_types", "noprim_core", "noprim_io", "noprim_cli"]
 
 [lint.flake8-tidy-imports]
 ban-relative-imports = "all"

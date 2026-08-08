@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, RootModel
 from noprim_core.annotations import TypeNames
 from noprim_core.rules.code import Selection
 from noprim_core.site import Qualname
-from noprim_core.verdict import Verdict
+from noprim_types.verdict import Verdict
 
 
 class NameSet(RootModel[frozenset[str]]):

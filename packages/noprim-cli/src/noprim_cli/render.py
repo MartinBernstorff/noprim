@@ -9,10 +9,10 @@ from noprim_core.baseline import BaselineOutcome
 from noprim_core.rules.code import RuleCode
 from noprim_core.rules.registry import rule_for
 from noprim_core.site import ColumnNumber, Filename, LineNumber, Qualname, Surface
-from noprim_core.verdict import Verdict
 from noprim_core.violation import Violation
 from noprim_io.baseline import BaselinePath
 from noprim_io.check import CheckReport, ErrorMessage
+from noprim_types.verdict import Verdict
 
 
 class Duration(RootModel[float]):

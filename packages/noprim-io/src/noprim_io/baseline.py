@@ -14,10 +14,10 @@ from noprim_core.baseline import (
 )
 from noprim_core.rules.code import RuleCode
 from noprim_core.site import Filename, Qualname, Surface
-from noprim_core.verdict import Verdict
 from noprim_core.violation import Violation
 from noprim_io.check import CheckPaths, CheckReport
 from noprim_io.paths import ExistingDirectory, SourceFile, repo_root
+from noprim_types.verdict import Verdict
 
 
 class BaselinePath(RootModel[Path]):

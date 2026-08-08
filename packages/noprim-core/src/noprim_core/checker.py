@@ -26,8 +26,8 @@ from noprim_core.suppression import (
     Suppressions,
     tokens_in,
 )
-from noprim_core.verdict import Verdict
 from noprim_core.violation import Violation
+from noprim_types.verdict import Verdict
 
 Function = ast.FunctionDef | ast.AsyncFunctionDef
 

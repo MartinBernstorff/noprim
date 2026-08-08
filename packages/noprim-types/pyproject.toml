@@ -1,0 +1,6 @@
+# Not a distribution; exists for tach check-external. See AGENTS.md.
+[project]
+name = "noprim-types"
+version = "0.0.0"
+requires-python = ">=3.13"
+dependencies = ["pydantic>=2"]

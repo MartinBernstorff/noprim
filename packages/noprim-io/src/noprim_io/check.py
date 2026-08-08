@@ -9,7 +9,6 @@ from noprim_core.config import CheckConfig
 from noprim_core.site import ColumnNumber, Filename, LineNumber
 from noprim_core.source import SourceCode
 from noprim_core.suppression import SuppressedViolation
-from noprim_core.verdict import Verdict
 from noprim_core.violation import Violation
 from noprim_io.paths import (
     DirectoryEntry,
@@ -18,6 +17,7 @@ from noprim_io.paths import (
     repo_root,
 )
 from noprim_io.settings import LoadedSettings
+from noprim_types.verdict import Verdict
 
 
 class CheckPaths(RootModel[tuple[Path, ...]]):

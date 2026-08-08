@@ -27,11 +27,11 @@ from noprim_core.site import (
     Surface,
 )
 from noprim_core.suppression import SuppressedViolation, SuppressionReason
-from noprim_core.verdict import Verdict
 from noprim_core.violation import Violation
 from noprim_io.baseline import BaselinePath
 from noprim_io.check import CheckReport, ErrorMessage, FileError
 from noprim_io.paths import SourceFile
+from noprim_types.verdict import Verdict
 
 
 def _at(filename: Filename, line: LineNumber, column: ColumnNumber) -> Violation:

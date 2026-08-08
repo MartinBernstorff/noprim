@@ -14,7 +14,7 @@ from noprim_core.config import (
 from noprim_core.rules.code import Selection, Selectors
 from noprim_core.rules.preset import Preset
 from noprim_core.rules.registry import selection, validate_selectors
-from noprim_core.verdict import Verdict
+from noprim_types.verdict import Verdict
 
 
 class AllowedNames(RootModel[tuple[str, ...]]):

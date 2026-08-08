@@ -289,6 +289,28 @@ allow of a name that is not on the deny-list: Enum (per-path entry for legacy/**
 An unrecognised key is caught earlier, by the schema, and is located by position
 instead — `per-path.0.selct  Extra inputs are not permitted`.
 
+## Types
+
+Installing `noprim` also installs `noprim_types` — the wrappers the linter itself uses,
+for the cases pydantic does not already cover.
+
+| Type | Wraps | Guarantee |
+| --- | --- | --- |
+| `Verdict` | `bool` | Composes with `and_`, `or_`, `negated` and `Verdict.any` without ever unwrapping. Defines `__bool__`, so it reads as the answer it is. |
+| `EnsuredDir` | `Path` | The directory exists once you hold one — created with its parents if it did not. Raises if a file holds the path. |
+| `NonBlankString` | `str` | Not empty and not all whitespace. The value passes through verbatim; nothing is stripped. |
+
+```python
+from noprim_types import EnsuredDir, NonBlankString, Verdict
+
+
+def write_report(into: EnsuredDir, title: NonBlankString) -> Verdict: ...
+```
+
+For an existing directory or file, use pydantic's own `DirectoryPath` and `FilePath`
+rather than anything here. `ReplacementTable.default()` is the full map from each denied
+type to what to reach for instead, and every name on the deny-list has an entry.
+
 ## Dogfooding
 
 `moon run :noprim` runs this linter over its own source under `--preset all` and with

@@ -9,7 +9,7 @@ from noprim_core.annotations import (
     is_exactly,
     names_in_text,
 )
-from noprim_core.verdict import Verdict
+from noprim_types.verdict import Verdict
 
 
 def _expression(text: AnnotationText) -> ast.expr:
