@@ -7,8 +7,10 @@ from pydantic import RootModel
 from typer.testing import CliRunner
 
 from noprim_cli.main import DisplayText, Duration, app, check, pretty_duration
-from noprim_core import Baseline, Settings
-from noprim_io import BaselinePath, ExistingDirectory, read_baseline
+from noprim_core.baseline import Baseline
+from noprim_core.settings import Settings
+from noprim_io.baseline import BaselinePath, read_baseline
+from noprim_io.paths import ExistingDirectory
 
 runner = CliRunner()
 

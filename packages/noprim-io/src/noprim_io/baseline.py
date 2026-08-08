@@ -4,14 +4,16 @@ from pathlib import Path
 from iterpy import Arr
 from pydantic import BaseModel, RootModel, ValidationError
 
-from noprim_core import (
-    AnnotationText,
+from noprim_core.baseline import (
     Baseline,
     BaselineKey,
-    Filename,
     KeyedViolation,
     KeyedViolations,
     PrunableFiles,
+)
+from noprim_core.checker import (
+    AnnotationText,
+    Filename,
     Qualname,
     Surface,
     Verdict,

@@ -4,10 +4,9 @@ from typing import Any, cast
 
 import pytest
 
-from noprim_core import (
+from noprim_core.baseline import Baseline, BaselineKey
+from noprim_core.checker import (
     AnnotationText,
-    Baseline,
-    BaselineKey,
     ColumnNumber,
     Filename,
     LineNumber,

@@ -39,7 +39,7 @@ Two things keep this honest, and both will fail loudly if you break them:
 
 - **Never take primitives as function parameters.** Wrap them in a Pydantic `RootModel` — a `str` says nothing about what it is; `UserId` does. This is what the project lints for, so dogfood it.
 - **No `tests/` folder.** Tests live beside the code as `test_<module>.py` — a test you can see is a test you maintain.
-- **Never maintain `__all__`.** Import directly; the export list is a second source of truth that drifts.
+- **Never maintain `__all__`, and keep every `__init__.py` empty.** A wall of `from x import Y as Y` is an `__all__` in disguise: a second source of truth that drifts, and a sorted list every branch inserts into. Import from the defining module (`from noprim_core.checker import Violation`); `tach` is what enforces the layer boundary.
 - **Prefer iterators over manual for-loops.** Use `iterpy`: `Arr([1,2,3]).map(lambda x: x+1).filter(lambda x: x>2).to_list()` — pipelines read top-to-bottom without accumulator state.
 - **Avoid constants.** Before defining one, ask whether it should be an argument from the caller — a constant is a decision frozen at the wrong layer.
 - **Default to no comments.** If code needs a comment to be understood, fix the code. When you must, one line on *why* (constraint, invariant, bug), never *what*. No docstrings.
@@ -56,7 +56,7 @@ Always run tasks through moon, never the tool directly: `moon run :test`, not `p
 | `moon run :format` | ruff format |
 | `moon run :format-check` | ruff format --check |
 | `moon run :typecheck` | pyrefly |
-| `moon run :modularity` | tach check + tach check-external |
+| `moon run :modularity` | tach check + tach check-external, and fails on a non-empty `__init__.py` |
 | `moon run :actionlint` | actionlint |
 | `moon run root:smoke` | builds the wheel, installs it into a clean venv, runs it |
 | `moon run :noprim` | noprim against this repo's own source |

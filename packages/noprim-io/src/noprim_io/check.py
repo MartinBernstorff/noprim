@@ -4,7 +4,7 @@ import pathspec
 from iterpy import Arr
 from pydantic import BaseModel, Field, RootModel
 
-from noprim_core import (
+from noprim_core.checker import (
     CheckConfig,
     ColumnNumber,
     Filename,

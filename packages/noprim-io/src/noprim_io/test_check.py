@@ -2,7 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from noprim_core import PathPatterns, Qualname, Settings, Violation
+from noprim_core.checker import Qualname, Violation
+from noprim_core.settings import PathPatterns, Settings
 from noprim_io.check import (
     CheckPaths,
     DiscoveryConfig,
