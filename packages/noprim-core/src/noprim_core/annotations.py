@@ -16,7 +16,8 @@ class AnnotationText(RootModel[str]):
 
 
 class TypeNames(RootModel[frozenset[str]]):
-    pass
+    def are_only(self, name: SymbolName) -> Verdict:
+        return Verdict(self.root == {name.root})
 
 
 def head_name(expression: ast.expr) -> SymbolName:

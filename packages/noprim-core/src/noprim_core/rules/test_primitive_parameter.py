@@ -4,7 +4,17 @@ from noprim_core.annotations import AnnotationText, names_in_text
 from noprim_core.config import CheckConfig, DeniedTypes
 from noprim_core.rules.primitive_parameter import PrimitiveParameter
 from noprim_core.rules.registry import default_selection
-from noprim_core.site import ColumnNumber, LineNumber, Qualname, Site, Surface
+from noprim_core.rules.rule import RuleMessage
+from noprim_core.site import (
+    ColumnNumber,
+    Filename,
+    LineNumber,
+    Owner,
+    Qualname,
+    Site,
+    Surface,
+)
+from noprim_core.violation import Violation
 
 
 def _site(surface: Surface, annotation: AnnotationText) -> Site:
@@ -70,4 +80,45 @@ def test_follows_the_configured_deny_list() -> None:
         not PrimitiveParameter()
         .applies(_site(Surface.PARAMETER, AnnotationText("str")), config)
         .root
+    )
+
+
+def _violation(annotation: AnnotationText, owner: Owner) -> Violation:
+    return Violation(
+        filename=Filename("cli.py"),
+        code=PrimitiveParameter().code,
+        line=LineNumber(1),
+        column=ColumnNumber(1),
+        surface=Surface.PARAMETER,
+        qualname=Qualname("ship.env"),
+        annotation=annotation,
+        owner=owner,
+    )
+
+
+def _message(annotation: AnnotationText, owner: Owner) -> RuleMessage:
+    return PrimitiveParameter().message(_violation(annotation, owner))
+
+
+def test_a_typer_parameter_is_told_what_to_use_instead() -> None:
+    assert _message(AnnotationText("str"), Owner.TYPER) == RuleMessage(
+        'parameter "env" is annotated "str"; Typer renders an enum.Enum natively, '
+        "and typer.Option(parser=...) takes any type"
+    )
+
+
+@pytest.mark.parametrize(
+    ("annotation", "owner"),
+    [
+        # Nothing else can spell a bare flag, so there is nothing to recommend.
+        ("bool", Owner.TYPER),
+        ("Annotated[bool, typer.Option()]", Owner.TYPER),
+        ("str", Owner.AUTHOR),
+    ],
+)
+def test_everything_else_keeps_the_generic_message(
+    annotation: str, owner: Owner
+) -> None:
+    assert _message(AnnotationText(annotation), owner) == RuleMessage(
+        f'parameter "env" is annotated "{annotation}"'
     )

@@ -32,9 +32,11 @@ class ClassChain(RootModel[tuple[Qualname, ...]]):
 
 
 class Owner(StrEnum):
-    # Who chose the annotation: pytest dictates the signature of tests and fixtures.
+    # Who chose the annotation: pytest dictates the signature of tests and fixtures,
+    # and typer reads a command's parameters to build the command line.
     AUTHOR = "author"
     PYTEST = "pytest"
+    TYPER = "typer"
 
 
 class Surface(StrEnum):
