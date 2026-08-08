@@ -5,6 +5,7 @@ from noprim_core.checker import (
     CheckConfig,
     DeniedTypes,
     Filename,
+    IgnoredNames,
     SourceCode,
     Surface,
     Verdict,
@@ -342,6 +343,23 @@ def test_uses_configured_deny_list() -> None:
     config = CheckConfig(denied=DeniedTypes(frozenset({"Name"})))
     violations = _check(SourceCode("def f(x: Name, y: str) -> None: ...\n"), config)
     assert [v.qualname.root for v in violations] == ["f.x"]
+
+
+def test_ignores_configured_symbol_names() -> None:
+    config = CheckConfig(ignored_names=IgnoredNames(frozenset({"kwargs"})))
+    violations = _check(
+        SourceCode("def f(x: str, **kwargs: str) -> None: ...\n"), config
+    )
+    assert [v.qualname.root for v in violations] == ["f.x"]
+
+
+def test_ignored_names_leave_return_types_alone() -> None:
+    config = CheckConfig(ignored_names=IgnoredNames(frozenset({"size", "f"})))
+    violations = _check(
+        SourceCode("class Thing:\n    size: int\n\ndef f(y: Name) -> str: ...\n"),
+        config,
+    )
+    assert [(v.qualname.root, v.surface) for v in violations] == [("f", Surface.RETURN)]
 
 
 @pytest.mark.parametrize(

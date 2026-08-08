@@ -11,6 +11,7 @@ from noprim_core import (
     ColumnNumber,
     DeniedTypes,
     Filename,
+    IgnoredNames,
     LineNumber,
     Surface,
     Verdict,
@@ -160,7 +161,10 @@ def _diagnostics(report: CheckReport) -> Arr[DisplayText]:
 
 
 def _resolve_config(
-    allow: AllowedNames, deny: DeniedNames, check_predicates: Verdict
+    allow: AllowedNames,
+    deny: DeniedNames,
+    check_predicates: Verdict,
+    ignore_names: IgnoredNames,
 ) -> CheckConfig:
     default = DeniedTypes.default().root
     # "" is the sentinel for unresolvable annotations, so denying it matches everything.
@@ -175,6 +179,7 @@ def _resolve_config(
     return CheckConfig(
         denied=DeniedTypes((default - set(allow.root)) | set(deny.root)),
         check_predicates=check_predicates,
+        ignored_names=ignore_names,
     )
 
 
@@ -192,6 +197,13 @@ def check(  # noqa: PLR0913, PLR0917
     deny: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option("--deny", help="Add a type to the deny-list. Repeatable."),
+    ] = None,
+    ignore_names: Annotated[  # noprim: ignore
+        list[str] | None,
+        typer.Option(
+            "--ignore-names",
+            help="Skip parameters and attributes with this name. Repeatable.",
+        ),
     ] = None,
     exclude: Annotated[  # noprim: ignore
         list[str] | None,
@@ -212,6 +224,7 @@ def check(  # noqa: PLR0913, PLR0917
         AllowedNames(tuple(allow if allow is not None else ())),
         DeniedNames(tuple(deny if deny is not None else ())),
         Verdict(check_predicates),
+        IgnoredNames(frozenset(ignore_names if ignore_names is not None else ())),
     )
 
     targets = tuple(paths) if paths is not None else (Path.cwd(),)

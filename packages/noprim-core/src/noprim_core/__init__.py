@@ -3,6 +3,7 @@ from noprim_core.checker import CheckConfig as CheckConfig
 from noprim_core.checker import ColumnNumber as ColumnNumber
 from noprim_core.checker import DeniedTypes as DeniedTypes
 from noprim_core.checker import Filename as Filename
+from noprim_core.checker import IgnoredNames as IgnoredNames
 from noprim_core.checker import LineNumber as LineNumber
 from noprim_core.checker import Qualname as Qualname
 from noprim_core.checker import SourceCode as SourceCode
