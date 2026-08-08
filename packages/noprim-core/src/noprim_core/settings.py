@@ -11,7 +11,7 @@ from noprim_core.config import (
     TopTypes,
 )
 from noprim_core.rules.code import Selection, Selectors
-from noprim_core.rules.registry import selection
+from noprim_core.rules.registry import selection, validate_selectors
 from noprim_core.verdict import Verdict
 
 
@@ -77,6 +77,11 @@ def _adjusted(
     return DeniedTypes((denied.root - set(allow.root)) | set(deny.root))
 
 
+class PerPathError(ValueError):
+    def __init__(self, paths: PathPatterns, cause: ValueError) -> None:
+        super().__init__(f"{cause} (per-path entry for {', '.join(paths.root)})")
+
+
 class FieldName(RootModel[str]):
     pass
 
@@ -99,6 +104,7 @@ class PathOverride(BaseModel):
     paths: PathPatterns
     allow: AllowedNames = AllowedNames(())
     deny: DeniedNames = DeniedNames(())
+    ignore: Selectors = Selectors(())
 
     def matches(self, path: RelativePath) -> Verdict:
         # Empty means the file lies outside the tree the patterns are anchored to.
@@ -106,6 +112,38 @@ class PathOverride(BaseModel):
             return Verdict(root=False)
         spec = pathspec.PathSpec.from_lines("gitignore", self.paths.root)
         return Verdict(spec.match_file(path.root))
+
+
+class PathOverrides(RootModel[tuple[PathOverride, ...]]):
+    def matching(self, path: RelativePath) -> "PathOverrides":
+        return PathOverrides(
+            tuple(Arr(self.root).filter(lambda override: bool(override.matches(path))))
+        )
+
+    def allowed(self) -> AllowedNames:
+        return AllowedNames(
+            tuple(Arr(self.root).map(lambda override: override.allow.root).flatten())
+        )
+
+    def denied(self) -> DeniedNames:
+        return DeniedNames(
+            tuple(Arr(self.root).map(lambda override: override.deny.root).flatten())
+        )
+
+    def ignored(self) -> Selectors:
+        return Selectors(
+            tuple(Arr(self.root).map(lambda override: override.ignore.root).flatten())
+        )
+
+
+# Pydantic attributes an after-validator error to Settings, not to the entry that
+# caused it, so the block's own patterns are the only way back to it.
+def _validated_entry(override: PathOverride, denied: DeniedTypes) -> None:
+    try:
+        _validated(override.allow, override.deny, denied)
+        validate_selectors(override.ignore)
+    except ValueError as error:
+        raise PerPathError(override.paths, error) from error
 
 
 class Settings(BaseModel):
@@ -119,41 +157,34 @@ class Settings(BaseModel):
     select: Selectors | None = None
     extend_select: Selectors = Selectors(())
     ignore: Selectors = Selectors(())
-    per_path: tuple[PathOverride, ...] = ()
+    per_path: PathOverrides = PathOverrides(())
 
     @model_validator(mode="after")
     def _names_are_coherent(self) -> Self:
-        _ = self._selection()
+        _ = self._selection(PathOverrides(()))
         _validated(self.allow, self.deny, DeniedTypes.default())
         top_level = self._top_level()
         _ = (
-            Arr(self.per_path)
-            .map(lambda o: _validated(o.allow, o.deny, top_level))
+            Arr(self.per_path.root)
+            .map(lambda override: _validated_entry(override, top_level))
             .to_list()
         )
         return self
 
-    def _selection(self) -> Selection:
-        return selection(self.select, self.extend_select, self.ignore)
+    def _selection(self, matching: PathOverrides) -> Selection:
+        return selection(
+            self.select,
+            self.extend_select,
+            Selectors(self.ignore.root + matching.ignored().root),
+        )
 
     def _top_level(self) -> DeniedTypes:
         return _adjusted(DeniedTypes.default(), self.allow, self.deny)
 
     def resolve(self, path: RelativePath) -> CheckConfig:
-        top_level = self._top_level()
-        matching = (
-            Arr(self.per_path)
-            .filter(lambda override: bool(override.matches(path)))
-            .to_list()
-        )
+        matching = self.per_path.matching(path)
         return CheckConfig(
-            selection=self._selection(),
-            denied=_adjusted(
-                top_level,
-                AllowedNames(
-                    tuple(Arr(matching).map(lambda o: o.allow.root).flatten())
-                ),
-                DeniedNames(tuple(Arr(matching).map(lambda o: o.deny.root).flatten())),
-            ),
+            selection=self._selection(matching),
+            denied=_adjusted(self._top_level(), matching.allowed(), matching.denied()),
             ignored_names=self.ignore_names,
         )

@@ -90,10 +90,17 @@ top of the top-level lists into a `CheckConfig` — is pure logic over a relativ
 so it lives in core alongside `pathspec`. `noprim_io.settings` does the I/O half:
 walking up for the file and reading it through `pydantic-settings`' TOML sources.
 
-Two things keep this honest, and both will fail loudly if you break them:
+An override carries `allow`, `deny` and `ignore`. `ignore` names rule codes and only
+ever *subtracts* — there is deliberately no per-path `select`, so the top-level
+selection stays the ceiling and `--select NOPRIM001` still means only `NOPRIM001` ran.
+It deselects rather than suppresses: the rule never fires, so nothing reaches
+`Suppressions` and nothing is counted, exactly like the top-level `ignore`.
+
+Three things keep this honest, and all will fail loudly if you break them:
 
 - **A flag overrides the config key with its own name.** `check` hands its parameters to `_overrides`, which keeps the ones `Settings.model_fields` knows and lets pydantic coerce the raw `list[str]` into the field's type — so a new setting needs a Typer annotation and nothing else. The name is the wiring, and `test_every_flag_that_is_not_run_mode_names_a_config_key` is what stops a mistyped parameter from becoming a flag that silently does nothing.
 - **`LoadedSettings.anchor` is `None` when no config was found.** Patterns then have no directory to hang off, and the walk falls back to the target's repo root — which is what makes `--exclude` behave the same with and without a config file.
+- **`_validated_entry` is the one seam that locates a per-path complaint.** Pydantic attributes an after-validator error to `Settings`, not to the entry, so every complaint raised there is re-wrapped in `PerPathError` carrying the block's own patterns. Validate a new override key inside `_validated_entry` and it is located for free; validate it anywhere else and the user gets a message with no way back to the block. Schema-level rejections — an unrecognised key under `extra="forbid"` — never reach the validator and are located by position instead.
 
 ## Python
 
@@ -107,6 +114,8 @@ Two things keep this honest, and both will fail loudly if you break them:
 ## Moon
 
 Always run tasks through moon, never the tool directly: `moon run :test`, not `pytest`. Moon resolves task dependencies and caches aggressively.
+
+**A task's inputs must include the sources it reads across a package boundary.** `dependsOn` orders projects; it does not make the upstream package's files an input, so a downstream `test` or `typecheck` would replay a stale cache after an upstream edit — a test that no longer holds still reports a pass. Each downstream package carries an `upstream` file group for exactly this, listed as an input on `test` and `typecheck`. `lint` and `format` are per-file and do not need it. A new package means a new `upstream` group.
 
 | Task | Does |
 | --- | --- |

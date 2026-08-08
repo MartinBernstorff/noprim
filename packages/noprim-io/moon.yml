@@ -12,6 +12,10 @@ dependsOn:
 fileGroups:
   sources:
     - 'src/**/*.py'
+  # The tasks that resolve imports across the boundary must be invalidated by the
+  # upstream source too; dependsOn alone does not make it an input.
+  upstream:
+    - '/packages/noprim-core/src/**/*.py'
   manifests:
     - 'pyproject.toml'
     - '/uv.lock'
@@ -21,6 +25,7 @@ tasks:
     script: 'uv run pytest src'
     inputs:
       - '@group(sources)'
+      - '@group(upstream)'
       - '@group(manifests)'
       - '/pytest.toml'
 
@@ -50,5 +55,6 @@ tasks:
     script: 'uv run pyrefly check src'
     inputs:
       - '@group(sources)'
+      - '@group(upstream)'
       - '@group(manifests)'
       - '/pyrefly.toml'

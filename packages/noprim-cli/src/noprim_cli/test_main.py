@@ -107,6 +107,22 @@ def test_defaults_to_the_current_directory(
     assert 'parameter "name" is annotated "str"' in result.stdout
 
 
+def test_a_rule_flag_replaces_its_key_without_dropping_per_path_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = (tmp_path / "noprim.toml").write_text(
+        'ignore = ["NOPRIM001"]\n\n'
+        '[[per-path]]\npaths = ["legacy/**"]\nignore = ["NOPRIM002"]\n'
+    )
+    (tmp_path / "legacy").mkdir()
+    _ = (tmp_path / "legacy" / "a.py").write_text("def f() -> str: ...\n")
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["check", "--ignore", "NOPRIM007"])
+
+    assert result.exit_code == 0
+
+
 def test_repeated_exclude_globs_drop_files(tmp_path: Path) -> None:
     _ = (tmp_path / "a.py").write_text("def f(a: str) -> None: ...\n")
     _ = (tmp_path / "b.py").write_text("def g(b: str) -> None: ...\n")
