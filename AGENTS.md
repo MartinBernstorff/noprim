@@ -83,6 +83,10 @@ than skips: the file is still walked, still counted as checked, and its violatio
 still join the suppressed count. Wanting the file not to be read at all is what
 `exclude` is for.
 
+Both comment parsers take a token stream rather than a `SourceCode`, so `tokens_in` runs
+once per file and the line-level and file-level readings cannot disagree about what a
+token is.
+
 `SuppressionReason.requested()` is what the summary counts: pytest owning a test or
 fixture signature is structural, like a dunder method being exempt, and counting those
 would swamp the suppressions the author actually wrote. The baseline suppresses later,

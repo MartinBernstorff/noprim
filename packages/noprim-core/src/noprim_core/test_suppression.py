@@ -19,6 +19,7 @@ from noprim_core.suppression import (
     SuppressionOutcome,
     SuppressionReason,
     Suppressions,
+    tokens_in,
 )
 from noprim_core.violation import Violation
 
@@ -80,7 +81,7 @@ def test_a_comment_suppresses_the_codes_it_names(
     comment: str, code: str, expected: list[SuppressionReason]
 ) -> None:
     suppressions = Suppressions(
-        lines=IgnoredLines.parse(SourceCode(f"x = 1  {comment}\n"))
+        lines=IgnoredLines.parse(tokens_in(SourceCode(f"x = 1  {comment}\n")))
     )
 
     outcome = suppressions.apply(
@@ -114,6 +115,16 @@ def test_a_comment_suppresses_the_codes_it_names(
             [SuppressionReason.FILE_COMMENT],
         ),
         ("# noprim: ignore-file[NOPRIM002, NOPRIM003]\n", "NOPRIM001", []),
+        (
+            "# noprim: ignore-file[NOPRIM002]\n# noprim: ignore-file[NOPRIM003]\n",
+            "NOPRIM003",
+            [SuppressionReason.FILE_COMMENT],
+        ),
+        (
+            "# noprim: ignore-file[NOPRIM002]\n# noprim: ignore-file[NOPRIM003]\n",
+            "NOPRIM001",
+            [],
+        ),
         ("# noprim: ignore-file[]\n", "NOPRIM001", []),
         # A line-level comment is not a file-level one, and vice versa.
         ("# noprim: ignore\n", "NOPRIM001", []),
@@ -125,7 +136,7 @@ def test_a_comment_suppresses_the_codes_it_names(
 def test_a_leading_comment_suppresses_the_whole_file(
     source: str, code: str, expected: list[SuppressionReason]
 ) -> None:
-    suppressions = Suppressions(file=IgnoredFile.parse(SourceCode(source)))
+    suppressions = Suppressions(file=IgnoredFile.parse(tokens_in(SourceCode(source))))
 
     outcome = suppressions.apply(
         Arr(
@@ -142,7 +153,9 @@ def test_a_leading_comment_suppresses_the_whole_file(
 
 def test_a_comment_suppresses_only_its_own_line() -> None:
     suppressions = Suppressions(
-        lines=IgnoredLines.parse(SourceCode("x = 1  # noprim: ignore\ny = 2\n"))
+        lines=IgnoredLines.parse(
+            tokens_in(SourceCode("x = 1  # noprim: ignore\ny = 2\n"))
+        )
     )
 
     outcome = suppressions.apply(

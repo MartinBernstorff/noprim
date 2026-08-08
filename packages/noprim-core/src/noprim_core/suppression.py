@@ -60,7 +60,7 @@ class Comment(RootModel[str]):
         # Anchored to end-of-line so a suppression cannot hide behind trailing prose.
         # Searched, not matched, so it can stack after another tool's suppression.
         grammar = re.compile(
-            rf"#\s*noprim:\s*{scope.value}\s*(?:\[(?P<codes>[^]]*)])?\s*$"
+            rf"#\s*noprim:\s*{re.escape(scope.value)}\s*(?:\[(?P<codes>[^]]*)])?\s*$"
         )
         found = grammar.search(self.root)
         if found is None:
@@ -78,12 +78,17 @@ class Comment(RootModel[str]):
         )
 
 
-def _tokens(source: SourceCode) -> Arr[tokenize.TokenInfo]:
+def tokens_in(source: SourceCode) -> Arr[tokenize.TokenInfo]:
+    # Both parsers read the same stream, so the caller tokenizes once and hands it over.
     return Arr(tokenize.generate_tokens(io.StringIO(source.root).readline))
 
 
-def _comments(source: SourceCode) -> Arr[tokenize.TokenInfo]:
-    return _tokens(source).filter(lambda token: token.type == tokenize.COMMENT)
+def _line(token: tokenize.TokenInfo) -> LineNumber:
+    return LineNumber(token.start[0])
+
+
+def _comments(tokens: Arr[tokenize.TokenInfo]) -> Arr[tokenize.TokenInfo]:
+    return tokens.filter(lambda token: token.type == tokenize.COMMENT)
 
 
 def _is_code(token: tokenize.TokenInfo) -> Verdict:
@@ -98,32 +103,32 @@ def _is_code(token: tokenize.TokenInfo) -> Verdict:
     )
 
 
-def _first_code_line(source: SourceCode) -> LineNumber | None:
-    found = _tokens(source).filter(_is_code).take(1).to_list()
+def _first_code_line(tokens: Arr[tokenize.TokenInfo]) -> LineNumber | None:
+    found = tokens.filter(_is_code).take(1).to_list()
     if found == []:
         return None
-    return LineNumber(found[0].start[0])
+    return _line(found[0])
 
 
-def _leading_comments(source: SourceCode) -> Arr[Comment]:
+def _leading_comments(tokens: Arr[tokenize.TokenInfo]) -> Arr[Comment]:
     # Only the leading block speaks for the module: past the first statement a comment
     # sits beside code, and belongs to that line.
-    boundary = _first_code_line(source)
+    boundary = _first_code_line(tokens)
     return (
-        _comments(source)
-        .filter(lambda token: boundary is None or token.start[0] < boundary.root)
+        _comments(tokens)
+        .filter(lambda token: boundary is None or _line(token).root < boundary.root)
         .map(lambda token: Comment(token.string))
     )
 
 
 class IgnoredLines(RootModel[dict[LineNumber, IgnoredCodes]]):
     @classmethod
-    def parse(cls, source: SourceCode) -> "IgnoredLines":
+    def parse(cls, tokens: Arr[tokenize.TokenInfo]) -> "IgnoredLines":
         pairs = (
-            _comments(source)
+            _comments(tokens)
             .map(
                 lambda token: (
-                    LineNumber(token.start[0]),
+                    _line(token),
                     Comment(token.string).ignored_codes(Scope.LINE),
                 )
             )
@@ -138,10 +143,10 @@ class IgnoredLines(RootModel[dict[LineNumber, IgnoredCodes]]):
 
 class IgnoredFile(RootModel[IgnoredCodes | None]):
     @classmethod
-    def parse(cls, source: SourceCode) -> "IgnoredFile":
+    def parse(cls, tokens: Arr[tokenize.TokenInfo]) -> "IgnoredFile":
         named = [
             codes
-            for codes in _leading_comments(source).map(
+            for codes in _leading_comments(tokens).map(
                 lambda comment: comment.ignored_codes(Scope.FILE)
             )
             if codes is not None
