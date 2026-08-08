@@ -69,14 +69,20 @@ Some signatures are not the author's to choose, so noprim does not report them:
   `*_test.py`. pytest decides what a fixture injects and what `parametrize` feeds in,
   so the parameter type is not a free choice. Return types and attributes in those
   files are still checked, as are ordinary helpers that happen to live beside tests.
+- **`bool` parameters of Typer commands**, unless `exempt-typer-args` is turned off.
+  A bare boolean flag has no other spelling: click decides flag-ness from the annotation
+  being literally `bool`, so wrapping it makes `--dry-run` start demanding an argument.
+  Only `bool` — a `str` or a `Path` option has real alternatives, and is reported with
+  them named. Matched on the attribute the app object is asked for — `command` or
+  `callback` — so it holds however that object is named, while unrelated names like
+  `command_runner` and a bare `@command`, which Typer never spells, stay checked. Return
+  types are still checked, as are helpers and nested functions.
 
 Anything else that is genuinely forced can be suppressed a line at a time:
 
 ```python
-def check(
-    quiet: Annotated[  # noprim: ignore
-        bool, typer.Option("--quiet")
-    ] = False,
+def render(
+    payload: dict[str, object],  # noprim: ignore
 ) -> None: ...
 ```
 
@@ -127,6 +133,19 @@ Only a class inside another class matches: a module-level `class Meta`, or one d
 inside a function, is a class you wrote and stays checked. Everything inside a matching
 body is skipped, however deeply nested, so the blast radius is whatever you deliberately
 put in there.
+
+A Typer command is the same story told the other way. Its `bool` flags are exempt by
+default, because nothing else can spell them, and every other primitive is reported with
+the way out named:
+
+```
+!../docs-support/scripts/example.sh 1 ../docs-support/fixtures/typer check cli.py
+```
+
+Both fixes are real: an `enum.Enum` renders as `[dev|prod]` in `--help` with no extra
+work, and `typer.Option(parser=...)` takes any type at all. `--no-exempt-typer-args`
+drops the last exemption too, for a codebase that would rather see the `bool` flags and
+suppress them a line at a time.
 
 ## Flags
 

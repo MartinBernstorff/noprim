@@ -100,14 +100,20 @@ Some signatures are not the author's to choose, so noprim does not report them:
   `*_test.py`. pytest decides what a fixture injects and what `parametrize` feeds in,
   so the parameter type is not a free choice. Return types and attributes in those
   files are still checked, as are ordinary helpers that happen to live beside tests.
+- **`bool` parameters of Typer commands**, unless `exempt-typer-args` is turned off.
+  A bare boolean flag has no other spelling: click decides flag-ness from the annotation
+  being literally `bool`, so wrapping it makes `--dry-run` start demanding an argument.
+  Only `bool` — a `str` or a `Path` option has real alternatives, and is reported with
+  them named. Matched on the attribute the app object is asked for — `command` or
+  `callback` — so it holds however that object is named, while unrelated names like
+  `command_runner` and a bare `@command`, which Typer never spells, stay checked. Return
+  types are still checked, as are helpers and nested functions.
 
 Anything else that is genuinely forced can be suppressed a line at a time:
 
 ```python
-def check(
-    quiet: Annotated[  # noprim: ignore
-        bool, typer.Option("--quiet")
-    ] = False,
+def render(
+    payload: dict[str, object],  # noprim: ignore
 ) -> None: ...
 ```
 
@@ -159,6 +165,20 @@ inside a function, is a class you wrote and stays checked. Everything inside a m
 body is skipped, however deeply nested, so the blast radius is whatever you deliberately
 put in there.
 
+A Typer command is the same story told the other way. Its `bool` flags are exempt by
+default, because nothing else can spell them, and every other primitive is reported with
+the way out named:
+
+```
+cli.py:7:17: NOPRIM001 parameter "env" is annotated "str"; Typer renders an enum.Enum natively, and typer.Option(parser=...) takes any type
+Checked 1 file in 31ms - found 1 violation
+```
+
+Both fixes are real: an `enum.Enum` renders as `[dev|prod]` in `--help` with no extra
+work, and `typer.Option(parser=...)` takes any type at all. `--no-exempt-typer-args`
+drops the last exemption too, for a codebase that would rather see the `bool` flags and
+suppress them a line at a time.
+
 ## Flags
 
 ```
@@ -169,53 +189,79 @@ put in there.
 │   paths      <path>  Files or directories to check.                          │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --allow                           <str>          Remove a type from the      │
-│                                                  deny-list. Repeatable.      │
-│ --deny                            <str>          Add a type to the           │
-│                                                  deny-list. Repeatable.      │
-│ --ignore-names                    <str>          Skip parameters and         │
-│                                                  attributes matching this    │
-│                                                  glob. Repeatable.           │
-│ --ignore-param-names              <str>          Skip parameters matching    │
-│                                                  this glob. Repeatable.      │
-│ --ignore-attribute-names          <str>          Skip attributes matching    │
-│                                                  this glob. Repeatable.      │
-│ --ignore-inner-classes            <str>          Skip the body of a nested   │
-│                                                  class matching this glob.   │
-│                                                  Repeatable.                 │
-│ --exclude                         <str>          Glob to skip while walking. │
-│                                                  Gitignore syntax, anchored  │
-│                                                  at the config file's        │
-│                                                  directory, or the repo root │
-│                                                  when there is none.         │
-│                                                  Repeatable.                 │
-│ --preset                          <default|all>  Which rules to start from   │
-│                                                  before select,              │
-│                                                  extend-select and ignore.   │
-│ --select                          <str>          Run these rule codes        │
-│                                                  instead of the defaults.    │
-│                                                  Prefixes count. Repeatable. │
-│ --extend-select                   <str>          Run these rule codes as     │
-│                                                  well as the selected ones.  │
-│                                                  Repeatable.                 │
-│ --ignore                          <str>          Drop these rule codes from  │
-│                                                  the run. Repeatable.        │
-│ --baseline                        <path>         Suppress violations         │
-│                                                  recorded in this file,      │
-│                                                  writing it if absent.       │
-│ --write-baseline                                 Rewrite an existing         │
-│                                                  baseline file.              │
-│ --quiet                   -q                     Suppress the summary.       │
-│ --statistics                                     Print counts instead of one │
-│                                                  line each.                  │
-│ --group-by                        <str>          Axes to count --statistics  │
-│                                                  along: rule, type, name or  │
-│                                                  path. Comma-separated,      │
-│                                                  repeatable.                 │
-│ --output-format                   <text|json>    How to print what was       │
-│                                                  found.                      │
-│                                                  [default: text]             │
-│ --help                                           Show this message and exit. │
+│ --allow                                    <str>          Remove a type from │
+│                                                           the deny-list.     │
+│                                                           Repeatable.        │
+│ --deny                                     <str>          Add a type to the  │
+│                                                           deny-list.         │
+│                                                           Repeatable.        │
+│ --ignore-names                             <str>          Skip parameters    │
+│                                                           and attributes     │
+│                                                           matching this      │
+│                                                           glob. Repeatable.  │
+│ --ignore-param-n…                          <str>          Skip parameters    │
+│                                                           matching this      │
+│                                                           glob. Repeatable.  │
+│ --ignore-attribu…                          <str>          Skip attributes    │
+│                                                           matching this      │
+│                                                           glob. Repeatable.  │
+│ --ignore-inner-c…                          <str>          Skip the body of a │
+│                                                           nested class       │
+│                                                           matching this      │
+│                                                           glob. Repeatable.  │
+│ --exempt-typer-a…      --no-exempt-typ…                   Skip bool          │
+│                                                           parameters of a    │
+│                                                           Typer command or   │
+│                                                           callback.          │
+│ --exclude                                  <str>          Glob to skip while │
+│                                                           walking. Gitignore │
+│                                                           syntax, anchored   │
+│                                                           at the config      │
+│                                                           file's directory,  │
+│                                                           or the repo root   │
+│                                                           when there is      │
+│                                                           none. Repeatable.  │
+│ --preset                                   <default|all>  Which rules to     │
+│                                                           start from before  │
+│                                                           select,            │
+│                                                           extend-select and  │
+│                                                           ignore.            │
+│ --select                                   <str>          Run these rule     │
+│                                                           codes instead of   │
+│                                                           the defaults.      │
+│                                                           Prefixes count.    │
+│                                                           Repeatable.        │
+│ --extend-select                            <str>          Run these rule     │
+│                                                           codes as well as   │
+│                                                           the selected ones. │
+│                                                           Repeatable.        │
+│ --ignore                                   <str>          Drop these rule    │
+│                                                           codes from the     │
+│                                                           run. Repeatable.   │
+│ --baseline                                 <path>         Suppress           │
+│                                                           violations         │
+│                                                           recorded in this   │
+│                                                           file, writing it   │
+│                                                           if absent.         │
+│ --write-baseline                                          Rewrite an         │
+│                                                           existing baseline  │
+│                                                           file.              │
+│ --quiet            -q                                     Suppress the       │
+│                                                           summary.           │
+│ --statistics                                              Print counts       │
+│                                                           instead of one     │
+│                                                           line each.         │
+│ --group-by                                 <str>          Axes to count      │
+│                                                           --statistics       │
+│                                                           along: rule, type, │
+│                                                           name or path.      │
+│                                                           Comma-separated,   │
+│                                                           repeatable.        │
+│ --output-format                            <text|json>    How to print what  │
+│                                                           was found.         │
+│                                                           [default: text]    │
+│ --help                                                    Show this message  │
+│                                                           and exit.          │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -282,6 +328,7 @@ ignore-names = ["kwargs", "size"]
 ignore-param-names = ["value", "*_contains"]
 ignore-attribute-names = ["_*"]
 ignore-inner-classes = ["Meta"]
+exempt-typer-args = false
 preset = "all"
 extend-select = ["NOPRIM004"]
 ignore = ["NOPRIM002"]

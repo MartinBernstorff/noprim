@@ -385,3 +385,12 @@ def test_allowing_a_name_that_is_not_denied_is_rejected() -> None:
     with pytest.raises(ValidationError) as caught:
         _ = Settings(allow=AllowedNames(("Enum",)))
     assert _raised(caught.value, NotOnDenyListError)
+
+
+def test_typer_arguments_are_exempt_by_default() -> None:
+    assert Settings().resolve(_ANY).exempt_typer_args
+
+
+def test_exempt_typer_args_is_carried_through() -> None:
+    settings = Settings.model_validate({"exempt-typer-args": False})
+    assert not settings.resolve(_ANY).exempt_typer_args

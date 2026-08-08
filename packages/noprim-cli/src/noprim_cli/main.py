@@ -194,6 +194,13 @@ def check(  # noqa: PLR0913, PLR0917
             help="Skip the body of a nested class matching this glob. Repeatable.",
         ),
     ] = None,
+    exempt_typer_args: Annotated[
+        bool | None,
+        typer.Option(
+            "--exempt-typer-args/--no-exempt-typer-args",
+            help="Skip bool parameters of a Typer command or callback.",
+        ),
+    ] = None,
     exclude: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option(
@@ -238,14 +245,14 @@ def check(  # noqa: PLR0913, PLR0917
             help="Suppress violations recorded in this file, writing it if absent.",
         ),
     ] = None,
-    refresh: Annotated[  # noprim: ignore
+    refresh: Annotated[
         bool,
         typer.Option("--write-baseline", help="Rewrite an existing baseline file."),
     ] = False,
-    quiet: Annotated[  # noprim: ignore
+    quiet: Annotated[
         bool, typer.Option("--quiet", "-q", help="Suppress the summary.")
     ] = False,
-    statistics: Annotated[  # noprim: ignore
+    statistics: Annotated[
         bool,
         typer.Option("--statistics", help="Print counts instead of one line each."),
     ] = False,

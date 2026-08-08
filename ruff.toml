@@ -44,7 +44,8 @@ ignore = ["E501"]
 # Loose scripts whose only contract is their stdout, and fixtures that exist to be
 # reported on rather than to be good code.
 "docs-support/**" = ["INP001"]
-"docs-support/fixtures/**" = ["ARG001", "T201"]
+# FBT for the same reason packages/noprim-cli does: a Typer command's bool is a flag.
+"docs-support/fixtures/**" = ["ARG001", "T201", "FBT001", "FBT002"]
 
 [lint.isort]
 known-first-party = ["noprim_types", "noprim_core", "noprim_io", "noprim_cli"]

@@ -90,6 +90,27 @@ rule-specific booleans. Anything the author does not choose (dunder methods,
 `RootModel` bodies, overload implementations, `@override` methods) is exempt during the
 walk and never becomes a site.
 
+A Typer command's `bool` parameters are the framework's rather than the author's — click
+decides flag-ness from the annotation being literally `bool`, so there is no other
+spelling of a bare flag — and `exempt-typer-args` covers them, on by default. It
+suppresses rather than skips, like pytest ownership, because a config key can turn it
+off.
+
+Only `bool`, deliberately. A `str` or `Path` option *can* become an `enum.Enum` or a
+`typer.Option(parser=...)`, so exempting it would wave through a case with a real fix.
+Those report instead, and `PrimitiveParameter.message` names the two alternatives — which
+is why `Violation` carries `owner`: it is the one thing a rule needs from the walk that
+the surface and the annotation do not say. It stays out of the baseline key, so the
+wording can change without invalidating anyone's baseline. Only parameters — a command's
+return type is still the author's.
+
+Unlike `@override` it is matched on the *attribute* rather than the name alone —
+`<anything>.command`, never a bare `@command` — because `command` and `callback` are
+names another library could plausibly export, and typer never spells it that way. It
+still misses a module-level `DEPLOY_ENV = Annotated[str, typer.Option(...)]` used as
+`env: DEPLOY_ENV`, but so does every rule: the use site names the alias and the
+definition is an assignment no surface covers.
+
 `@override` is the exemption rather than a list of method names: a name glob cannot tell
 a Django `Model.save` override from a domain `delete()` that should stay checked, and if
 the base method disappears the type checker errors, so the exemption cannot rot. It is
@@ -105,7 +126,7 @@ the enclosing function's name and decorators plus the module's filename — and
 Rules fire unconditionally; `noprim_core.suppression` is the one place that decides
 whether a violation is reported, and returns `(reported, suppressed)` rather than a
 silently shortened list. Each suppressed violation names its `SuppressionReason` —
-`comment`, `file-comment`, `ignored-name`, `inner-class`, `pytest` or `baseline` — so "why was this
+`comment`, `file-comment`, `ignored-name`, `inner-class`, `pytest`, `typer` or `baseline` — so "why was this
 not reported?" has a single answer, and the summary can count them all rather than just
 the baseline's. Suppression is not a rule.
 
@@ -124,9 +145,10 @@ Both comment parsers take a token stream rather than a `SourceCode`, so `tokens_
 once per file and the line-level and file-level readings cannot disagree about what a
 token is.
 
-`SuppressionReason.requested()` is what the summary counts: pytest owning a test or
-fixture signature is structural, like a dunder method being exempt, and counting those
-would swamp the suppressions the author actually wrote. The baseline suppresses later,
+`SuppressionReason.requested()` is what the summary counts: a framework owning a
+signature — pytest's tests and fixtures, typer's commands — is structural, like a dunder
+method being exempt, and counting those would swamp the suppressions the author actually
+wrote. The baseline suppresses later,
 at the CLI, because keying an entry needs a path relative to the repo — but it hands
 back the same `SuppressedViolation`s and joins the same count.
 
@@ -264,3 +286,20 @@ documator is not a dev dependency: it requires Python 3.14 and this package supp
 
 - Tool settings live in each tool's own file — `ruff.toml`, `pyrefly.toml`, `tach.toml`, `pytest.toml` — **not** in `pyproject.toml`. Keeps config where the tool's docs say to look. Packaging is the exception: `[build-system]` and `[tool.hatch.build.*]` have nowhere else to live.
 - Commits are validated automatically by lefthook pre-commit hooks (`lefthook.yml`). Install with `lefthook install`.
+
+## Releasing
+
+The version is not written down anywhere — `hatch-vcs` derives it from the git tag, and python-semantic-release derives the tag from commit messages. So **the PR title is the release note**, and it must be a [conventional commit](https://www.conventionalcommits.org/):
+
+| Prefix | Effect below 1.0.0 |
+| --- | --- |
+| `fix: …` | patch — `0.3.1` → `0.3.2` |
+| `feat: …` | minor — `0.3.1` → `0.4.0` |
+| `feat!: …` or a `BREAKING CHANGE:` footer | minor, until 1.0.0 (`major_on_zero = false`) |
+| `chore: …`, `docs: …`, `refactor: …`, `test: …`, `ci: …` | no release |
+
+PRs are squash-merged, so the PR title becomes the commit subject on main and is the only thing the parser reads — an individual commit inside the branch is never parsed. Nothing enforces this; a non-conventional title means `release` runs, finds no releasable change, and exits without publishing.
+
+Merging to main runs `ci`; on success, `release` tags, creates the GitHub Release, builds, and publishes to PyPI via trusted publishing (no API token). To cut a release from an unchanged main, dispatch `release` manually.
+
+Publishing requires a trusted publisher registered at [pypi.org/manage/account/publishing](https://pypi.org/manage/account/publishing/) — owner `MartinBernstorff`, repository `noprim`, workflow `release.yml`, no environment. A one-time manual step, since only a logged-in human can do it.

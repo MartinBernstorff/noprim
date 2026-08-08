@@ -942,3 +942,73 @@ def test_a_config_key_survives_when_a_different_flag_is_passed(
     assert result.stdout.splitlines() == [
         'a.py:1:26: NOPRIM007 return type is annotated "bool"'
     ]
+
+
+_COMMAND = "@app.command()\ndef ship(force: bool = False) -> None: ...\n"
+
+
+def test_a_typer_bool_is_exempt_by_default(tmp_path: Path) -> None:
+    target = tmp_path / "cli.py"
+    _ = target.write_text(_COMMAND)
+
+    result = runner.invoke(app, ["check", str(target)])
+
+    assert result.stdout.splitlines() == []
+    # A framework owning the signature is structural, so it stays out of the count.
+    assert result.stderr.endswith("no violations\n")
+
+
+def test_a_typer_parameter_that_is_not_a_bool_says_what_to_use_instead(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "cli.py"
+    _ = target.write_text("@app.command()\ndef ship(env: str) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", "-q", str(target)])
+
+    assert result.stdout.splitlines() == [
+        (
+            f'{target}:2:15: NOPRIM001 parameter "env" is annotated "str"; Typer'
+            " renders an enum.Enum natively, and typer.Option(parser=...) takes any"
+            " type"
+        )
+    ]
+
+
+def test_no_exempt_typer_args_reports_a_command_s_bool(tmp_path: Path) -> None:
+    target = tmp_path / "cli.py"
+    _ = target.write_text(_COMMAND)
+
+    result = runner.invoke(app, ["check", "-q", "--no-exempt-typer-args", str(target)])
+
+    assert result.stdout.splitlines() == [
+        f'{target}:2:17: NOPRIM001 parameter "force" is annotated "bool"'
+    ]
+
+
+def test_exempt_typer_args_can_come_from_the_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".git").mkdir()
+    _ = (tmp_path / "noprim.toml").write_text("exempt-typer-args = false\n")
+    _ = (tmp_path / "cli.py").write_text(_COMMAND)
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["check", "-q", "cli.py"])
+
+    assert result.stdout.splitlines() == [
+        'cli.py:2:17: NOPRIM001 parameter "force" is annotated "bool"'
+    ]
+
+
+def test_exempt_typer_args_overrides_the_config_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".git").mkdir()
+    _ = (tmp_path / "noprim.toml").write_text("exempt-typer-args = false\n")
+    _ = (tmp_path / "cli.py").write_text(_COMMAND)
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["check", "-q", "--exempt-typer-args", "cli.py"])
+
+    assert result.stdout.splitlines() == []
