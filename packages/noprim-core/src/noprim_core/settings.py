@@ -117,7 +117,7 @@ class PathOverride(BaseModel):
 class PathOverrides(RootModel[tuple[PathOverride, ...]]):
     def matching(self, path: RelativePath) -> "PathOverrides":
         return PathOverrides(
-            tuple(Arr(self.root).filter(lambda override: bool(override.matches(path))))
+            tuple(Arr(self.root).filter(lambda override: override.matches(path)))
         )
 
     def allowed(self) -> AllowedNames:

@@ -81,11 +81,7 @@ def _message(violation: Violation) -> DisplayText:
 
 def _found(report: CheckReport) -> DisplayText:
     suppressed = Count(
-        len(
-            Arr(report.suppressed)
-            .filter(lambda s: bool(s.reason.requested()))
-            .to_list()
-        )
+        len(Arr(report.suppressed).filter(lambda s: s.reason.requested()).to_list())
     )
     clauses = [
         f"found {_plural(Count(len(report.violations)), Noun('violation'))}"
@@ -169,7 +165,7 @@ def _summary(outcome: RunOutcome) -> DisplayText:
 def _notices(
     outcome: RunOutcome, elapsed: Duration, options: RenderOptions
 ) -> Arr[DisplayText]:
-    if options.quiet.root:
+    if options.quiet:
         return Arr([])
     stale = [_stale_note(outcome.stale)] if outcome.stale.root > 0 else []
     return Arr([*stale, _summary_line(outcome.report, elapsed, _summary(outcome))])

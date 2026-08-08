@@ -14,9 +14,9 @@ class PrimitiveReturn(Rule):
 
     @override
     def applies(self, site: Site, config: CheckConfig) -> Verdict:
-        return Verdict(
-            site.surface == Surface.RETURN
-            and bool(config.denied.matches(site.names))
+        return (
+            Verdict(site.surface == Surface.RETURN)
+            .and_(config.denied.matches(site.names))
             # A bare bool return belongs to the predicate rule, which opts in separately.
-            and not bool(returns_a_bare_bool(site))
+            .and_(returns_a_bare_bool(site).negated)
         )

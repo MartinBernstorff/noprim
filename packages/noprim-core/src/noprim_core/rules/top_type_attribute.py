@@ -13,7 +13,6 @@ class TopTypeAttribute(Rule):
 
     @override
     def applies(self, site: Site, config: CheckConfig) -> Verdict:
-        return Verdict(
-            site.surface == Surface.ATTRIBUTE
-            and bool(config.top_types.matches(site.names))
+        return Verdict(site.surface == Surface.ATTRIBUTE).and_(
+            config.top_types.matches(site.names)
         )

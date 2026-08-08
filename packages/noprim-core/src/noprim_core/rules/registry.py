@@ -44,23 +44,21 @@ def default_selection() -> Selection:
     return Selection(
         frozenset(
             Arr(RULES)
-            .filter(lambda rule: bool(rule.on_by_default))
+            .filter(lambda rule: rule.on_by_default)
             .map(lambda rule: rule.code)
         )
     )
 
 
 def _matches_any(code: RuleCode, selectors: Selectors) -> Verdict:
-    return Verdict(
-        Arr(selectors.root).any(lambda selector: bool(selector.matches(code)))
-    )
+    return Verdict.any(Arr(selectors.root).map(lambda selector: selector.matches(code)))
 
 
 def _selected(selectors: Selectors) -> Selection:
     return Selection(
         frozenset(
             Arr(RULES)
-            .filter(lambda rule: bool(_matches_any(rule.code, selectors)))
+            .filter(lambda rule: _matches_any(rule.code, selectors))
             .map(lambda rule: rule.code)
         )
     )
@@ -73,7 +71,7 @@ def _matches_nothing(selector: Selector) -> Verdict:
 def validate_selectors(selectors: Selectors) -> None:
     # A selector that names no rule is a typo, and silently doing nothing is the
     # failure this validation exists to prevent.
-    unknown = Arr(selectors.root).filter(lambda s: bool(_matches_nothing(s))).to_list()
+    unknown = Arr(selectors.root).filter(_matches_nothing).to_list()
     if len(unknown) > 0:
         raise UnknownSelectorError(Selectors(tuple(unknown)))
 

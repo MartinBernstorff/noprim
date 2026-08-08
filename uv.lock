@@ -171,11 +171,11 @@ wheels = [
 
 [[package]]
 name = "iterpy"
-version = "1.14.0"
+version = "1.15.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/03/f8/8fc1ef1de3bb64b26983f0deb5a99c90a40e45e76684760daf6f13e1e811/iterpy-1.14.0.tar.gz", hash = "sha256:22bdda576a045cbe7897168d4c0bd519ea29e1ea44310a5427068825b1043a66", size = 108647, upload-time = "2026-01-09T12:04:36.67Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/44/a3/2d3aa307cb651ffb4cf397778989f836a792ea5a9b02550633e6dcd0b40a/iterpy-1.15.0.tar.gz", hash = "sha256:a7eb5a22f2c905f8290f43a3a356b529eb87791cfbb0bacf46e50d542a473e59", size = 89018, upload-time = "2026-08-08T10:33:35.988Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2d/2a/95c1f2c50410c5f25c8eb77afac50de30068f12f28e5ef2b5942f023b137/iterpy-1.14.0-py3-none-any.whl", hash = "sha256:4689c90c24230cd3ac89e060234173d267aa0ff3ba397043b8f6463f0e897609", size = 12318, upload-time = "2026-01-09T12:04:35.262Z" },
+    { url = "https://files.pythonhosted.org/packages/fc/22/bdefeabb9275dad279e57f513c4271f995ad4ae9c8f136cd7c856e8179f6/iterpy-1.15.0-py3-none-any.whl", hash = "sha256:e2b26d9b6d09b476d7a41ff98b4b2932c6a93322ddf1a9013420845fdbef3176", size = 12550, upload-time = "2026-08-08T10:33:34.614Z" },
 ]
 
 [[package]]
@@ -248,7 +248,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "iterpy", specifier = ">=1.4" },
+    { name = "iterpy", specifier = ">=1.15" },
     { name = "pathspec", specifier = ">=0.12" },
     { name = "pydantic", specifier = ">=2.11" },
     { name = "pydantic-settings", specifier = ">=2.15" },
@@ -280,7 +280,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "iterpy", specifier = ">=1.4" },
+    { name = "iterpy", specifier = ">=1.15" },
     { name = "pydantic", specifier = ">=2.11" },
     { name = "typer", specifier = ">=0.15" },
 ]
@@ -297,7 +297,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "iterpy", specifier = ">=1.4" },
+    { name = "iterpy", specifier = ">=1.15" },
     { name = "pathspec", specifier = ">=0.12" },
     { name = "pydantic", specifier = ">=2" },
 ]
@@ -315,7 +315,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "iterpy", specifier = ">=1.4" },
+    { name = "iterpy", specifier = ">=1.15" },
     { name = "pathspec", specifier = ">=0.12" },
     { name = "pydantic", specifier = ">=2" },
     { name = "pydantic-settings", specifier = ">=2.15" },

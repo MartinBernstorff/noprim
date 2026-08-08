@@ -98,17 +98,16 @@ class Suppressions(BaseModel):
 
     def _named_as_ignored(self, violation: Violation) -> Verdict:
         # A return type carries the function's name, not a symbol name of its own.
-        return Verdict(
-            violation.surface != Surface.RETURN
-            and self.names.contains(violation.qualname.leaf()).root
+        return Verdict(violation.surface != Surface.RETURN).and_(
+            self.names.contains(violation.qualname.leaf())
         )
 
     def reason_for(self, violation: Violation) -> SuppressionReason | None:
-        if self.lines.covers(violation).root:
+        if self.lines.covers(violation):
             return SuppressionReason.COMMENT
-        if self._named_as_ignored(violation).root:
+        if self._named_as_ignored(violation):
             return SuppressionReason.IGNORED_NAME
-        if self.pytest_owned.covers(violation).root:
+        if self.pytest_owned.covers(violation):
             return SuppressionReason.PYTEST
         return None
 

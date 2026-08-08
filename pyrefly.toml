@@ -4,3 +4,8 @@ search-path = ["packages/noprim-core/src", "packages/noprim-io/src", "packages/n
 python-version = "3.13"
 preset = "all"
 permissive-ignores = false
+
+# Verdict defines __bool__ so that it reads as the answer it is. Flagging that as an
+# implicit conversion would make every if and filter spell out bool(...).
+[errors]
+implicit-bool = false

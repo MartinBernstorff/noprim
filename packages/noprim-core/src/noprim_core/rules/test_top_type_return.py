@@ -56,4 +56,4 @@ def test_leaves_everything_else_alone(surface: Surface, annotation: str) -> None
 
 
 def test_is_off_by_default() -> None:
-    assert not default_selection().contains(TopTypeReturn().code).root
+    assert not default_selection().contains(TopTypeReturn().code)

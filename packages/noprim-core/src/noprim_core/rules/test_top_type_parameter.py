@@ -72,4 +72,4 @@ def test_the_deny_list_does_not_reach_it() -> None:
 
 
 def test_is_off_by_default() -> None:
-    assert not default_selection().contains(TopTypeParameter().code).root
+    assert not default_selection().contains(TopTypeParameter().code)

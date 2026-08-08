@@ -46,7 +46,7 @@ class UnsupportedBaselineVersionError(Exception):
         self.outdated = Verdict(version.root < BaselineVersion.current().root)
         remedy = (
             "rerun with --write-baseline to regenerate it"
-            if self.outdated.root
+            if self.outdated
             else "upgrade noprim"
         )
         super().__init__(
@@ -125,7 +125,8 @@ def prunable_files(
     vanished = frozenset(
         Arr(baseline.root)
         .map(lambda key: anchor.absolute(key.filename))
-        .filter(lambda file: _within(file, targets).root and not file.root.exists())
+        .filter(lambda file: _within(file, targets))
+        .filter(lambda file: not file.root.exists())
         .map(anchor.relative)
     )
     return PrunableFiles(analysed | vanished)
