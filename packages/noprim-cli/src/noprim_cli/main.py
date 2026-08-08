@@ -13,6 +13,7 @@ from noprim_core import (
     Filename,
     LineNumber,
     Surface,
+    Verdict,
     Violation,
 )
 from noprim_io import (
@@ -158,7 +159,9 @@ def _diagnostics(report: CheckReport) -> Arr[DisplayText]:
     return Arr(sorted(located)).map(Diagnostic.rendered)
 
 
-def _resolve_config(allow: AllowedNames, deny: DeniedNames) -> CheckConfig:
+def _resolve_config(
+    allow: AllowedNames, deny: DeniedNames, check_predicates: Verdict
+) -> CheckConfig:
     default = DeniedTypes.default().root
     # "" is the sentinel for unresolvable annotations, so denying it matches everything.
     if "" in set(allow.root) | set(deny.root):
@@ -169,7 +172,10 @@ def _resolve_config(allow: AllowedNames, deny: DeniedNames) -> CheckConfig:
     unknown = sorted(set(allow.root) - default)
     if len(unknown) > 0:
         raise NotOnDenyListError(AllowedNames(tuple(unknown)))
-    return CheckConfig(denied=DeniedTypes((default - set(allow.root)) | set(deny.root)))
+    return CheckConfig(
+        denied=DeniedTypes((default - set(allow.root)) | set(deny.root)),
+        check_predicates=check_predicates,
+    )
 
 
 # Typer derives the command-line interface from these annotations: a RootModel here
@@ -191,6 +197,13 @@ def check(
         list[str] | None,
         typer.Option("--exclude", help="Glob to skip while walking. Repeatable."),
     ] = None,
+    check_predicates: Annotated[  # noprim: ignore
+        bool,
+        typer.Option(
+            "--check-predicates",
+            help="Report functions returning bool instead of skipping them.",
+        ),
+    ] = False,
     quiet: Annotated[  # noprim: ignore
         bool, typer.Option("--quiet", "-q", help="Suppress the summary.")
     ] = False,
@@ -198,6 +211,7 @@ def check(
     source = _resolve_config(
         AllowedNames(tuple(allow if allow is not None else ())),
         DeniedNames(tuple(deny if deny is not None else ())),
+        Verdict(check_predicates),
     )
 
     targets = tuple(paths) if paths is not None else (Path.cwd(),)

@@ -41,6 +41,10 @@ Some signatures are not the author's to choose, so noprim does not report them:
 - **Dunder methods.** `__eq__` takes `object` because the data model says so.
 - **`RootModel` subclass bodies.** Wrapping a primitive is the point of the pattern.
 - **Overload implementations.** The stubs above them carry the real types.
+- **Predicates** — functions returning a bare `bool`. A domain type around the answer
+  to a yes-or-no question rarely earns its keep. Only the return type is exempt: a
+  `bool` parameter, attribute, `list[bool]` or `bool | None` is still reported. Pass
+  `--check-predicates` to report them too.
 - **`self` and `cls`.**
 - **`Literal[...]` arguments**, which are values rather than types.
 - **Parameters of pytest tests and fixtures**, in files matching `test_*.py` or
@@ -65,6 +69,7 @@ The comment suppresses only the line it sits on, and must end the line — which
 | --- | --- |
 | `--allow NAME` | Remove a type from the deny-list. Repeatable. |
 | `--deny NAME` | Add a type to the deny-list. Repeatable. |
+| `--check-predicates` | Report functions returning `bool` instead of skipping them. |
 | `--exclude GLOB` | Skip paths while walking. Gitignore syntax, anchored at the repo root. Repeatable. |
 | `--quiet`, `-q` | Suppress the trailing summary. |
 
