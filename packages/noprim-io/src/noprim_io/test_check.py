@@ -2,14 +2,23 @@ from pathlib import Path
 
 import pytest
 
-from noprim_core import Qualname, Violation
+from noprim_core import PathPatterns, Qualname, Settings, Violation
 from noprim_io.check import (
     CheckPaths,
     DiscoveryConfig,
-    ExistingDirectory,
     IgnorePatterns,
     check_paths,
 )
+from noprim_io.paths import ExistingDirectory
+from noprim_io.settings import LoadedSettings
+
+
+def _excluding(root: ExistingDirectory, patterns: IgnorePatterns) -> DiscoveryConfig:
+    return DiscoveryConfig(
+        settings=LoadedSettings(
+            settings=Settings(exclude=PathPatterns(patterns.root)), anchor=root
+        )
+    )
 
 
 def _leaf(violation: Violation) -> Qualname:
@@ -77,7 +86,9 @@ def test_exclude_globs_match_root_relative_paths(
     )
     _ = (tmp_path / "kept.py").write_text("def g(kept: int) -> None: ...\n")
 
-    report = check_paths(CheckPaths((tmp_path,)), DiscoveryConfig(excludes=glob))
+    report = check_paths(
+        CheckPaths((tmp_path,)), _excluding(ExistingDirectory(tmp_path), glob)
+    )
 
     assert sorted(_leaf(v).root for v in report.violations) == sorted(expected)
 
@@ -89,7 +100,7 @@ def test_accepts_repeated_exclude_globs(tmp_path: Path) -> None:
 
     report = check_paths(
         CheckPaths((tmp_path,)),
-        DiscoveryConfig(excludes=IgnorePatterns(("a.py", "b.py"))),
+        _excluding(ExistingDirectory(tmp_path), IgnorePatterns(("a.py", "b.py"))),
     )
 
     assert [_leaf(v).root for v in report.violations] == ["c"]
@@ -167,7 +178,7 @@ def test_exclude_globs_are_relative_to_the_repo_root(tmp_path: Path) -> None:
 
     report = check_paths(
         CheckPaths((tmp_path / "src",)),
-        DiscoveryConfig(excludes=IgnorePatterns(("/src/old.py",))),
+        _excluding(ExistingDirectory(tmp_path), IgnorePatterns(("/src/old.py",))),
     )
 
     assert [_leaf(v).root for v in report.violations] == ["b"]

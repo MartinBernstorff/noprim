@@ -4,8 +4,8 @@ CLI that lints Python for primitive-typed function parameters.
 
 ## Layout
 
-- `packages/noprim-core/` (`noprim_core`) — pure linting logic and value objects. No CLI, no I/O.
-- `packages/noprim-io/` (`noprim_io`) — path walking and file reading.
+- `packages/noprim-core/` (`noprim_core`) — pure linting logic and value objects, plus the settings schema and per-path resolution. No CLI, no I/O.
+- `packages/noprim-io/` (`noprim_io`) — path walking, file reading, and config discovery.
 - `packages/noprim-cli/` (`noprim_cli`) — Typer app. Argument parsing and output formatting only.
 
 Dependencies point one way: `noprim-core` <- `noprim-io` <- `noprim-cli`. Enforced by `tach` (`moon run :modularity`).
@@ -13,6 +13,19 @@ Dependencies point one way: `noprim-core` <- `noprim-io` <- `noprim-cli`. Enforc
 Three modules, **one distribution**. The root `pyproject.toml` is the only publishable package (`noprim`); it owns the `noprim` script and vendors all three module dirs into a single wheel. It uses hatchling rather than `uv_build` because `uv_build`'s `module-root` is one directory and cannot reach across `packages/*`.
 
 The per-package `pyproject.toml` files are **not** distributions — they have no `[build-system]` and are never built. They exist so `tach check-external` can enforce per-module external dependencies, which is what keeps `typer` out of `noprim-core`. Add a third-party dependency to both the module's manifest and the root's: the module's manifest satisfies `tach`, and the root's is what actually ships. Forgetting the root one usually surfaces as `moon run root:smoke` failing, though a lazily-imported dependency can slip past it.
+
+## Settings
+
+The schema (`noprim_core.settings`) is one `Settings` model: `allow`, `deny`,
+`exclude`, and `per-path` overrides. Resolution — unioning every matching override on
+top of the top-level lists into a `CheckConfig` — is pure logic over a relative path,
+so it lives in core alongside `pathspec`. `noprim_io.settings` does the I/O half:
+walking up for the file and reading it through `pydantic-settings`' TOML sources.
+
+Two things keep this honest, and both will fail loudly if you break them:
+
+- **Every config key is a CLI flag of the same name.** `test_every_config_key_has_a_flag_of_the_same_name` compares `Settings.model_fields` against `check`'s signature, so adding one without the other fails.
+- **`LoadedSettings.anchor` is `None` when no config was found.** Patterns then have no directory to hang off, and the walk falls back to the target's repo root — which is what makes `--exclude` behave the same with and without a config file.
 
 ## Python
 
