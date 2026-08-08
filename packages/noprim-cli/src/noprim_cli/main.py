@@ -217,7 +217,7 @@ def _existing_baseline(path: BaselinePath, refresh: Verdict) -> Baseline:
         return read_baseline(path)
     except UnsupportedBaselineVersionError as error:
         # --write-baseline is the remedy the error names, so it has to survive it.
-        if not (refresh.root and error.outdated.root):
+        if refresh.and_(error.outdated).negated:
             raise
         return Baseline.empty()
 

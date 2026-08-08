@@ -117,8 +117,7 @@ def _files_under(
     entries = (
         Arr(sorted(directory.root.iterdir()))
         .map(DirectoryEntry)
-        # pyrefly: ignore[implicit-bool]
-        .filter(lambda entry: not _matches_any(entry, specs))
+        .filter(lambda entry: _matches_any(entry, specs).negated)
         .to_list()
     )
     nested = (
@@ -129,17 +128,15 @@ def _files_under(
     )
     return (
         Arr(entries)
-        # pyrefly: ignore[implicit-bool, bad-argument-type]
-        .filter(lambda entry: _is_python_source(entry) and entry.root.is_file())
+        .filter(_is_python_source)
+        .filter(lambda entry: entry.root.is_file())
         .map(lambda entry: SourceFile(entry.root))
         .chain(nested)
     )
 
 
 def _matches_any(entry: DirectoryEntry, specs: Arr[_AnchoredSpec]) -> Verdict:
-    return Verdict(
-        specs.map(lambda spec: spec.matches(entry)).any(lambda hit: hit.root)
-    )
+    return Verdict.any(specs.map(lambda spec: spec.matches(entry)))
 
 
 def _walk(directory: ExistingDirectory, config: DiscoveryConfig) -> Arr[SourceFile]:
@@ -171,7 +168,6 @@ def _files_to_check(paths: CheckPaths, config: DiscoveryConfig) -> Arr[SourceFil
             )
         )
         .flatten()
-        # pyrefly: ignore[bad-argument-type]
         .filter(lambda file: _is_python_source(DirectoryEntry(file.root)))
         .unique()
     )

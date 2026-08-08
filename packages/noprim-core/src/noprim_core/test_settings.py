@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import pytest
 from pydantic import ValidationError
 
@@ -22,8 +24,12 @@ _ANY = RelativePath("a.py")
 
 
 def _raised(error: ValidationError, expected: type[ValueError]) -> Verdict:
-    # pyrefly: ignore[not-required-key-access]
-    cause: object = error.errors()[0]["ctx"]["error"]
+    details = error.errors()[0]
+    context = details.get("ctx")
+    # A pydantic error with no cause attached means the helper is broken, not that
+    # the wrong exception was raised.
+    assert context is not None, details
+    cause: object = context["error"]
     if isinstance(cause, PerPathError):
         cause = cause.__cause__
     return Verdict(isinstance(cause, expected))
@@ -39,20 +45,20 @@ def test_defaults_resolve_to_the_default_selection() -> None:
 
 def test_select_narrows_the_rules_that_run() -> None:
     settings = Settings(select=Selectors((Selector("NOPRIM007"),)))
-    assert settings.resolve(_ANY).selection.contains(RuleCode("NOPRIM007")).root
-    assert not settings.resolve(_ANY).selection.contains(RuleCode("NOPRIM001")).root
+    assert settings.resolve(_ANY).selection.contains(RuleCode("NOPRIM007"))
+    assert not settings.resolve(_ANY).selection.contains(RuleCode("NOPRIM001"))
 
 
 def test_ignore_subtracts_from_the_rules_that_run() -> None:
     settings = Settings(ignore=Selectors((Selector("NOPRIM002"),)))
-    assert not settings.resolve(_ANY).selection.contains(RuleCode("NOPRIM002")).root
-    assert settings.resolve(_ANY).selection.contains(RuleCode("NOPRIM001")).root
+    assert not settings.resolve(_ANY).selection.contains(RuleCode("NOPRIM002"))
+    assert settings.resolve(_ANY).selection.contains(RuleCode("NOPRIM001"))
 
 
 def test_a_selector_that_names_no_rule_is_rejected() -> None:
     with pytest.raises(ValidationError) as caught:
         _ = Settings(select=Selectors((Selector("NOPRIM999"),)))
-    assert _raised(caught.value, UnknownSelectorError).root
+    assert _raised(caught.value, UnknownSelectorError)
 
 
 def test_deny_adds_to_the_deny_list() -> None:
@@ -193,7 +199,7 @@ def test_an_override_allowing_a_name_nothing_denies_is_rejected() -> None:
                 ),
             )
         )
-    assert _raised(caught.value, NotOnDenyListError).root
+    assert _raised(caught.value, NotOnDenyListError)
 
 
 def test_a_per_path_complaint_names_the_patterns_it_came_from() -> None:
@@ -231,7 +237,7 @@ def test_an_override_that_both_allows_and_denies_a_name_is_rejected() -> None:
                 ),
             )
         )
-    assert _raised(caught.value, AllowedAndDeniedError).root
+    assert _raised(caught.value, AllowedAndDeniedError)
 
 
 def test_multi_word_keys_are_spelled_with_a_dash() -> None:
@@ -260,7 +266,7 @@ def test_an_unrecognised_key_is_rejected(document: object) -> None:
 def test_a_name_both_allowed_and_denied_is_rejected() -> None:
     with pytest.raises(ValidationError) as caught:
         _ = Settings(allow=AllowedNames(("str",)), deny=DeniedNames(("str",)))
-    assert _raised(caught.value, AllowedAndDeniedError).root
+    assert _raised(caught.value, AllowedAndDeniedError)
 
 
 @pytest.mark.parametrize(
@@ -271,13 +277,13 @@ def test_a_name_both_allowed_and_denied_is_rejected() -> None:
     ],
     ids=["allow", "deny"],
 )
-def test_an_empty_name_is_rejected(settings: object) -> None:
+def test_an_empty_name_is_rejected(settings: Callable[[], Settings]) -> None:
     with pytest.raises(ValidationError) as caught:
-        _ = settings()  # pyrefly: ignore[not-callable]
-    assert _raised(caught.value, EmptyNameError).root
+        _ = settings()
+    assert _raised(caught.value, EmptyNameError)
 
 
 def test_allowing_a_name_that_is_not_denied_is_rejected() -> None:
     with pytest.raises(ValidationError) as caught:
         _ = Settings(allow=AllowedNames(("Enum",)))
-    assert _raised(caught.value, NotOnDenyListError).root
+    assert _raised(caught.value, NotOnDenyListError)

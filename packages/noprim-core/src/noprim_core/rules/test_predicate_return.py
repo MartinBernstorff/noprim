@@ -66,4 +66,4 @@ def test_allowing_bool_takes_predicates_off_the_table() -> None:
 
 
 def test_is_off_by_default() -> None:
-    assert not default_selection().contains(PredicateReturn().code).root
+    assert not default_selection().contains(PredicateReturn().code)

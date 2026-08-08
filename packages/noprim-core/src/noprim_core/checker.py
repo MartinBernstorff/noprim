@@ -74,16 +74,15 @@ def _is_dunder(function: Function) -> Verdict:
 
 
 def _has_exempt_signature(function: Function, overloaded: OverloadedNames) -> Verdict:
-    is_overload_implementation = (
-        function.name in overloaded.root and not _decorated_as_overload(function).root
+    is_overload_implementation = Verdict(function.name in overloaded.root).and_(
+        _decorated_as_overload(function).negated
     )
-    return Verdict(_is_dunder(function).root or is_overload_implementation)
+    return _is_dunder(function).or_(is_overload_implementation)
 
 
 def _pytest_owns_parameters(function: Function) -> Verdict:
-    return Verdict(
-        function.name.startswith("test_")
-        or _mentions(Arr(function.decorator_list), SymbolName("fixture")).root
+    return Verdict(function.name.startswith("test_")).or_(
+        _mentions(Arr(function.decorator_list), SymbolName("fixture"))
     )
 
 
@@ -97,7 +96,7 @@ def _subclasses_root_model(class_def: ast.ClassDef) -> Verdict:
 
 
 def _parameter_owner(function: Function, in_pytest_module: Verdict) -> Owner:
-    if in_pytest_module.root and _pytest_owns_parameters(function).root:
+    if in_pytest_module.and_(_pytest_owns_parameters(function)):
         return Owner.PYTEST
     return Owner.AUTHOR
 
@@ -127,7 +126,7 @@ def _function_sites(
     in_pytest_module: Verdict,
 ) -> Arr[Site]:
     qualname = scope.child(Qualname(function.name))
-    if _has_exempt_signature(function, overloaded):  # pyrefly: ignore[implicit-bool]
+    if _has_exempt_signature(function, overloaded):
         return _sites_in(function.body, qualname, in_pytest_module)
 
     returns = function.returns
@@ -147,7 +146,7 @@ def _function_sites(
 def _class_sites(
     class_def: ast.ClassDef, scope: Qualname, in_pytest_module: Verdict
 ) -> Arr[Site]:
-    if _subclasses_root_model(class_def):  # pyrefly: ignore[implicit-bool]
+    if _subclasses_root_model(class_def):
         return Arr([])
 
     qualname = scope.child(Qualname(class_def.name))
@@ -173,7 +172,6 @@ def _overloaded_names(body: list[ast.stmt]) -> OverloadedNames:
         frozenset(
             node.name
             for node in body
-            # pyrefly: ignore[implicit-bool]
             if isinstance(node, Function) and _decorated_as_overload(node)
         )
     )
@@ -201,7 +199,7 @@ def _sites_in(
 def _violations_at(
     site: Site, filename: Filename, rules: Arr[Rule], config: CheckConfig
 ) -> Arr[Violation]:
-    return rules.filter(lambda rule: bool(rule.applies(site, config))).map(
+    return rules.filter(lambda rule: rule.applies(site, config)).map(
         lambda rule: Violation(
             filename=filename,
             code=rule.code,
@@ -234,7 +232,7 @@ def check_source(
     source: SourceCode, filename: Filename, config: CheckConfig
 ) -> SuppressionOutcome:
     tree = ast.parse(source.root, filename=filename.root)
-    enabled = Arr(RULES).filter(lambda rule: bool(config.selection.contains(rule.code)))
+    enabled = Arr(RULES).filter(lambda rule: config.selection.contains(rule.code))
     sites = _sites_in(tree.body, Qualname(""), _is_pytest_module(filename))
     return _suppressions(source, sites, config).apply(
         sites.map(

@@ -9,9 +9,8 @@ from noprim_core.verdict import Verdict
 
 
 def returns_a_bare_bool(site: Site) -> Verdict:
-    return Verdict(
-        site.surface == Surface.RETURN
-        and bool(text_is_exactly(site.annotation, SymbolName("bool")))
+    return Verdict(site.surface == Surface.RETURN).and_(
+        text_is_exactly(site.annotation, SymbolName("bool"))
     )
 
 
@@ -21,6 +20,4 @@ class PredicateReturn(Rule):
 
     @override
     def applies(self, site: Site, config: CheckConfig) -> Verdict:
-        return Verdict(
-            bool(returns_a_bare_bool(site)) and bool(config.denied.matches(site.names))
-        )
+        return returns_a_bare_bool(site).and_(config.denied.matches(site.names))
