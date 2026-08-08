@@ -108,6 +108,9 @@ table is not a config file, so it does not stop the search.
 allow = ["str"]
 deny = ["Enum"]
 exclude = ["generated/**"]
+ignore-names = ["kwargs", "size"]
+check-predicates = true
+top-types = true
 ```
 
 Every key is a flag of the same name, and passing that flag replaces the key outright
@@ -128,6 +131,10 @@ deny = ["Enum", "Flag"]
 paths = ["test_infra/**", "django_app/**"]
 allow = ["str", "int", "bool"]
 ```
+
+Overrides carry `allow` and `deny` only. The remaining keys are whole-run settings:
+`exclude` decides which files are walked at all, and the rest are rules rather than
+deny-lists.
 
 Patterns use gitignore syntax, anchored at the directory holding the config, so
 `test_*.py` matches at any depth and `domain/**` does not. Every entry that matches a

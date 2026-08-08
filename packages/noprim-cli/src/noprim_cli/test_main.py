@@ -429,3 +429,29 @@ def test_every_config_key_has_a_flag_of_the_same_name() -> None:
     flags = set(inspect.signature(check).parameters) - {"paths", "quiet"}
     keys = set(Settings.model_fields) - {"per_path"}
     assert keys == flags
+
+
+def test_a_rule_key_can_come_from_the_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".git").mkdir()
+    _ = (tmp_path / "noprim.toml").write_text("top-types = true\n")
+    _ = (tmp_path / "a.py").write_text("def f(x: Any) -> None: ...\n")
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["check", "a.py"])
+
+    assert result.stdout.splitlines() == ['a.py:1:10: parameter "x" is annotated "Any"']
+
+
+def test_a_boolean_config_key_survives_when_its_flag_is_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".git").mkdir()
+    _ = (tmp_path / "noprim.toml").write_text("check-predicates = true\n")
+    _ = (tmp_path / "a.py").write_text("def is_ready(x: Name) -> bool: ...\n")
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["check", "--top-types", "a.py"])
+
+    assert result.stdout.splitlines() == ['a.py:1:26: return type is annotated "bool"']
