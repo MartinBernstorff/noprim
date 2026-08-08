@@ -3,6 +3,7 @@ from time import perf_counter
 from typing import Annotated
 
 import typer
+from iterpy import Arr
 from pydantic import RootModel
 
 from noprim_core import CheckConfig, DeniedTypes, Surface, Violation
@@ -55,56 +56,66 @@ class Noun(RootModel[str]):
     pass
 
 
+class DisplayText(RootModel[str]):
+    pass
+
+
 @app.callback()
 def cli() -> None:
     """Find function parameters annotated with primitive types."""
 
 
-def pretty_duration(duration: Duration) -> str:
+def pretty_duration(duration: Duration) -> DisplayText:
     milliseconds = round(duration.root * 1000)
     seconds, remainder = divmod(milliseconds, 1000)
     if seconds == 0:
-        return f"{remainder}ms"
-    return f"{milliseconds / 1000:.2f}s"
+        return DisplayText(f"{remainder}ms")
+    return DisplayText(f"{milliseconds / 1000:.2f}s")
 
 
-def _plural(count: Count, noun: Noun) -> str:
-    return (
-        f"{count.root} {noun.root}" if count.root == 1 else f"{count.root} {noun.root}s"
-    )
+def _plural(count: Count, noun: Noun) -> DisplayText:
+    plural = "" if count.root == 1 else "s"
+    return DisplayText(f"{count.root} {noun.root}{plural}")
 
 
-def _message(violation: Violation) -> str:
-    name = violation.qualname.rsplit(".", 1)[-1]
+def _message(violation: Violation) -> DisplayText:
+    name = violation.qualname.leaf().root
+    annotation = violation.annotation.root
     match violation.surface:
         case Surface.PARAMETER:
-            return f'parameter "{name}" is annotated "{violation.annotation}"'
+            return DisplayText(f'parameter "{name}" is annotated "{annotation}"')
         case Surface.RETURN:
-            return f'return type is annotated "{violation.annotation}"'
+            return DisplayText(f'return type is annotated "{annotation}"')
         case Surface.ATTRIBUTE:
-            return f'attribute "{name}" is annotated "{violation.annotation}"'
+            return DisplayText(f'attribute "{name}" is annotated "{annotation}"')
 
 
-def _found(report: CheckReport) -> str:
+def _found(report: CheckReport) -> DisplayText:
     violations = (
-        f"found {_plural(Count(len(report.violations)), Noun('violation'))}"
+        f"found {_plural(Count(len(report.violations)), Noun('violation')).root}"
         if len(report.violations) > 0
         else "no violations"
     )
     if len(report.errors) == 0:
-        return violations
-    return f"{violations}, {_plural(Count(len(report.errors)), Noun('error'))}"
+        return DisplayText(violations)
+    errors = _plural(Count(len(report.errors)), Noun("error")).root
+    return DisplayText(f"{violations}, {errors}")
 
 
-def _diagnostics(report: CheckReport) -> list[str]:
+def _diagnostics(report: CheckReport) -> Arr[DisplayText]:
     located = sorted(
-        [(v.filename, v.line, v.column, _message(v)) for v in report.violations]
-        + [(e.filename, e.line, e.column, e.message) for e in report.errors]
+        [
+            (v.filename.root, v.line.root, v.column.root, _message(v).root)
+            for v in report.violations
+        ]
+        + [
+            (e.filename.root, e.line.root, e.column.root, e.message.root)
+            for e in report.errors
+        ]
     )
-    return [
-        f"{filename}:{line}:{column}: {text}"
-        for filename, line, column, text in located
-    ]
+    return Arr(located).map(
+        lambda entry: DisplayText(f"{entry[0]}:{entry[1]}:{entry[2]}: {entry[3]}")
+    )
 
 
 def _resolve_config(allow: AllowedNames, deny: DeniedNames) -> CheckConfig:
@@ -121,24 +132,26 @@ def _resolve_config(allow: AllowedNames, deny: DeniedNames) -> CheckConfig:
     return CheckConfig(denied=DeniedTypes((default - set(allow.root)) | set(deny.root)))
 
 
+# Typer derives the command-line interface from these annotations: a RootModel here
+# would be parsed as one opaque argument, losing the flag names and the arity.
 @app.command()
 def check(
-    paths: Annotated[
+    paths: Annotated[  # noprim: ignore
         list[Path] | None, typer.Argument(help="Files or directories to check.")
     ] = None,
-    allow: Annotated[
+    allow: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option("--allow", help="Remove a type from the deny-list. Repeatable."),
     ] = None,
-    deny: Annotated[
+    deny: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option("--deny", help="Add a type to the deny-list. Repeatable."),
     ] = None,
-    exclude: Annotated[
+    exclude: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option("--exclude", help="Glob to skip while walking. Repeatable."),
     ] = None,
-    quiet: Annotated[
+    quiet: Annotated[  # noprim: ignore
         bool, typer.Option("--quiet", "-q", help="Suppress the summary.")
     ] = False,
 ) -> None:
@@ -168,14 +181,14 @@ def check(
         raise typer.Exit(2) from error
     elapsed = Duration(perf_counter() - started)
 
-    diagnostics = _diagnostics(report)
+    diagnostics = _diagnostics(report).to_list()
     for line in diagnostics:
-        typer.echo(line)
+        typer.echo(line.root)
 
     if not quiet:
         typer.echo(
-            f"Checked {_plural(Count(report.files_checked), Noun('file'))} "
-            f"in {pretty_duration(elapsed)} - {_found(report)}",
+            f"Checked {_plural(Count(report.files_checked.root), Noun('file')).root} "
+            f"in {pretty_duration(elapsed).root} - {_found(report).root}",
             err=True,
         )
 
