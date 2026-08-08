@@ -7,7 +7,8 @@ import pytest
 from pydantic import RootModel
 from typer.testing import CliRunner
 
-from noprim_cli.main import DisplayText, Duration, app, check, pretty_duration
+from noprim_cli.main import app, check
+from noprim_cli.render import DisplayText
 from noprim_core.baseline import Baseline
 from noprim_core.settings import Settings
 from noprim_io.baseline import BaselinePath, read_baseline
@@ -35,49 +36,6 @@ def test_reports_each_surface_ruff_style(tmp_path: Path) -> None:
         f'{target}:1:28: NOPRIM002 return type is annotated "int"',
         f'{target}:3:12: NOPRIM003 attribute "email" is annotated "str"',
     ]
-
-
-def test_sorts_diagnostics_by_path_line_and_column(tmp_path: Path) -> None:
-    _ = (tmp_path / "b.py").write_text("def g(b: int) -> None: ...\n")
-    _ = (tmp_path / "a.py").write_text("def f(a: int, aa: int) -> None: ...\n")
-
-    result = runner.invoke(app, ["check", str(tmp_path)])
-
-    assert result.stdout.splitlines() == [
-        f'{tmp_path / "a.py"}:1:10: NOPRIM001 parameter "a" is annotated "int"',
-        f'{tmp_path / "a.py"}:1:19: NOPRIM001 parameter "aa" is annotated "int"',
-        f'{tmp_path / "b.py"}:1:10: NOPRIM001 parameter "b" is annotated "int"',
-    ]
-
-
-def test_interleaves_file_errors_with_violations(tmp_path: Path) -> None:
-    _ = (tmp_path / "a.py").write_text("def f(a: int) -> None: ...\n")
-    _ = (tmp_path / "b.py").write_text("def g(b: int -> None:\n")
-
-    result = runner.invoke(app, ["check", str(tmp_path)])
-
-    lines = result.stdout.splitlines()
-    assert lines[0].startswith(f"{tmp_path / 'a.py'}:1:10: NOPRIM001 parameter")
-    assert lines[1].startswith(f"{tmp_path / 'b.py'}:1:")
-    assert "syntax error: " in lines[1]
-
-
-def test_summarises_a_run_with_violations_on_stderr(tmp_path: Path) -> None:
-    _ = (tmp_path / "bad.py").write_text("def f(a: int, b: int) -> None: ...\n")
-
-    result = runner.invoke(app, ["check", str(tmp_path)])
-
-    assert result.stderr.startswith("Checked 1 file in ")
-    assert result.stderr.rstrip().endswith(" - found 2 violations")
-
-
-def test_summarises_a_clean_run_on_stderr(tmp_path: Path) -> None:
-    _ = (tmp_path / "good.py").write_text("def f(a: Name) -> None: ...\n")
-
-    result = runner.invoke(app, ["check", str(tmp_path)])
-
-    assert result.stderr.startswith("Checked 1 file in ")
-    assert result.stderr.rstrip().endswith(" - no violations")
 
 
 def test_quiet_hides_the_summary_but_not_the_violations(tmp_path: Path) -> None:
@@ -154,15 +112,6 @@ def test_undecodable_file_exits_nonzero_with_an_error(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "decode error: " in result.stdout
-
-
-def test_summary_counts_unreadable_files_apart_from_violations(tmp_path: Path) -> None:
-    _ = (tmp_path / "broken.py").write_text("def f(a: int -> None:\n")
-    _ = (tmp_path / "bad.py").write_text("def g(b: int) -> None: ...\n")
-
-    result = runner.invoke(app, ["check", str(tmp_path)])
-
-    assert result.stderr.rstrip().endswith(" - found 1 violation, 1 error")
 
 
 def test_allow_removes_type_from_deny_list(tmp_path: Path) -> None:
@@ -255,17 +204,6 @@ def test_a_selector_prefix_turns_on_every_rule(tmp_path: Path) -> None:
     ]
 
 
-@pytest.mark.parametrize("flag", ["--select", "--extend-select", "--ignore"])
-def test_a_selector_matching_no_rule_exits_two(tmp_path: Path, flag: str) -> None:
-    target = tmp_path / "good.py"
-    _ = target.write_text("def f() -> None: ...\n")
-
-    result = runner.invoke(app, ["check", flag, "NOPRIM999", str(target)])
-
-    assert result.exit_code == 2
-    assert "no rule matches: NOPRIM999" in _plain(DisplayText(result.output)).root
-
-
 def test_extend_select_adds_a_rule_to_the_defaults(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
     _ = target.write_text("def f(x: Any, y: int) -> None: ...\n")
@@ -276,6 +214,17 @@ def test_extend_select_adds_a_rule_to_the_defaults(tmp_path: Path) -> None:
         f'{target}:1:10: NOPRIM004 parameter "x" is annotated "Any"',
         f'{target}:1:18: NOPRIM001 parameter "y" is annotated "int"',
     ]
+
+
+@pytest.mark.parametrize("flag", ["--select", "--extend-select", "--ignore"])
+def test_a_selector_matching_no_rule_exits_two(tmp_path: Path, flag: str) -> None:
+    target = tmp_path / "good.py"
+    _ = target.write_text("def f() -> None: ...\n")
+
+    result = runner.invoke(app, ["check", flag, "NOPRIM999", str(target)])
+
+    assert result.exit_code == 2
+    assert "no rule matches: NOPRIM999" in _plain(DisplayText(result.output)).root
 
 
 def test_ignore_names_skips_symbols_by_name(tmp_path: Path) -> None:
@@ -368,21 +317,6 @@ def test_invalid_flags_fail_before_walking_paths(tmp_path: Path) -> None:
 
     assert result.exit_code == 2
     assert "Checked" not in result.stderr
-
-
-@pytest.mark.parametrize(
-    ("seconds", "expected"),
-    [
-        (0.0, "0ms"),
-        (0.38, "380ms"),
-        (0.9999, "1.00s"),
-        (1.0, "1.00s"),
-        (1.2351, "1.24s"),
-        (62.5, "62.50s"),
-    ],
-)
-def test_pretty_duration(seconds: float, expected: str) -> None:
-    assert pretty_duration(Duration(seconds)).root == expected
 
 
 def test_a_directory_vanishing_mid_walk_exits_two(tmp_path: Path) -> None:

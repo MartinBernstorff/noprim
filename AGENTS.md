@@ -8,6 +8,8 @@ CLI that lints Python for primitive-typed function parameters.
 - `packages/noprim-io/` (`noprim_io`) — path walking, file reading, and config discovery.
 - `packages/noprim-cli/` (`noprim_cli`) — Typer app. Argument parsing and output formatting only.
 
+`noprim_cli.render` is the whole of the formatting: `render(outcome, elapsed, options)` turns a run into a `Rendered` — `stdout`, `stderr`, `exit_code` — and `main._emit` is the only thing that echoes or exits. Wording, pluralisation, sort order and exit codes are therefore tested in `test_render.py` against a returned value; `test_main.py` only checks that flags reach the right place.
+
 Dependencies point one way: `noprim-core` <- `noprim-io` <- `noprim-cli`. Enforced by `tach` (`moon run :modularity`).
 
 Three modules, **one distribution**. The root `pyproject.toml` is the only publishable package (`noprim`); it owns the `noprim` script and vendors all three module dirs into a single wheel. It uses hatchling rather than `uv_build` because `uv_build`'s `module-root` is one directory and cannot reach across `packages/*`.

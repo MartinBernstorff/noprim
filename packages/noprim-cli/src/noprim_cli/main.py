@@ -1,20 +1,26 @@
 from pathlib import Path
 from time import perf_counter
 from tomllib import TOMLDecodeError
-from typing import Annotated, NoReturn, override
+from typing import Annotated, NoReturn
 
 import typer
 from iterpy import Arr
-from pydantic import BaseModel, RootModel, ValidationError
+from pydantic import BaseModel, ValidationError
 
+from noprim_cli.render import (
+    Duration,
+    Rendered,
+    RenderOptions,
+    RunOutcome,
+    baseline_applied,
+    baseline_written,
+    render,
+)
 from noprim_core.baseline import Baseline, BaselineOutcome, apply_baseline
 from noprim_core.config import IgnoredNames
 from noprim_core.rules.code import Selector, Selectors
-from noprim_core.rules.registry import rule_for
 from noprim_core.settings import AllowedNames, DeniedNames, PathPatterns, Settings
-from noprim_core.site import ColumnNumber, Filename, LineNumber
 from noprim_core.verdict import Verdict
-from noprim_core.violation import Violation
 from noprim_io.baseline import (
     BaselinePath,
     MalformedBaselineError,
@@ -42,106 +48,9 @@ class WriteBaselineWithoutPathError(typer.BadParameter):
 app = typer.Typer(no_args_is_help=True)
 
 
-class Duration(RootModel[float]):
-    pass
-
-
-class Count(RootModel[int]):
-    pass
-
-
-class Noun(RootModel[str]):
-    pass
-
-
-class DisplayText(RootModel[str]):
-    # Interpolated into other messages, so it has to render as its text and not as
-    # the model's repr.
-    @override
-    def __str__(self) -> str:
-        return self.root
-
-    @override
-    def __repr__(self) -> str:
-        return self.root
-
-
 @app.callback()
 def cli() -> None:
     """Find function parameters annotated with primitive types."""
-
-
-def pretty_duration(duration: Duration) -> DisplayText:
-    milliseconds = round(duration.root * 1000)
-    seconds, remainder = divmod(milliseconds, 1000)
-    if seconds == 0:
-        return DisplayText(f"{remainder}ms")
-    return DisplayText(f"{milliseconds / 1000:.2f}s")
-
-
-def _plural(count: Count, noun: Noun) -> DisplayText:
-    plural = "" if count.root == 1 else "s"
-    return DisplayText(f"{count.root} {noun.root}{plural}")
-
-
-def _message(violation: Violation) -> DisplayText:
-    rule = rule_for(violation.code)
-    return DisplayText(f"{violation.code.root} {rule.message(violation).root}")
-
-
-def _found(report: CheckReport, suppressed: Count) -> DisplayText:
-    clauses = [
-        f"found {_plural(Count(len(report.violations)), Noun('violation'))}"
-        if len(report.violations) > 0
-        else "no violations",
-        *([f"{suppressed.root} suppressed by baseline"] if suppressed.root > 0 else []),
-        *(
-            [str(_plural(Count(len(report.errors)), Noun("error")))]
-            if len(report.errors) > 0
-            else []
-        ),
-    ]
-    return DisplayText(", ".join(clauses))
-
-
-class Diagnostic(BaseModel):
-    filename: Filename
-    line: LineNumber
-    column: ColumnNumber
-    text: DisplayText
-
-    def __lt__(self, other: "Diagnostic") -> bool:
-        return (self.filename.root, self.line.root, self.column.root) < (
-            other.filename.root,
-            other.line.root,
-            other.column.root,
-        )
-
-    def rendered(self) -> DisplayText:
-        return DisplayText(
-            f"{self.filename.root}:{self.line.root}:{self.column.root}: {self.text}"
-        )
-
-
-def _diagnostics(report: CheckReport) -> Arr[DisplayText]:
-    located: list[Diagnostic] = [
-        *(
-            Diagnostic(
-                filename=v.filename, line=v.line, column=v.column, text=_message(v)
-            )
-            for v in report.violations
-        ),
-        *(
-            Diagnostic(
-                filename=e.filename,
-                line=e.line,
-                column=e.column,
-                text=DisplayText(e.message.root),
-            )
-            for e in report.errors
-        ),
-    ]
-    return Arr(sorted(located)).map(Diagnostic.rendered)
 
 
 class Overrides(BaseModel):
@@ -278,9 +187,10 @@ def check(  # noqa: PLR0913, PLR0917
     except (OSError, ValidationError) as error:
         _fail(error)
     elapsed = Duration(perf_counter() - started)
+    options = RenderOptions(quiet=Verdict(root=quiet))
 
     if baseline is None:
-        _report_run(report, elapsed, Verdict(root=quiet), Count(0))
+        _emit(render(RunOutcome(report=report), elapsed, options))
 
     path = BaselinePath(baseline)
     outcome = _against_baseline(
@@ -292,30 +202,22 @@ def check(  # noqa: PLR0913, PLR0917
             write_baseline(path, outcome.regenerated)
         except OSError as error:
             _fail(error)
-        _report_written(report, outcome, path, elapsed, Verdict(root=quiet))
+        _emit(render(baseline_written(report, outcome, path), elapsed, options))
 
-    if len(outcome.stale) > 0 and not quiet:
-        typer.echo(f"note: {_stale_note(Count(len(outcome.stale)))}", err=True)
-    _report_run(
-        report.model_copy(update={"violations": outcome.reported}),
-        elapsed,
-        Verdict(root=quiet),
-        Count(len(outcome.suppressed)),
-    )
+    _emit(render(baseline_applied(report, outcome), elapsed, options))
+
+
+def _emit(rendered: Rendered) -> NoReturn:
+    for line in rendered.stdout:
+        typer.echo(str(line))
+    for line in rendered.stderr:
+        typer.echo(str(line), err=True)
+    raise typer.Exit(rendered.exit_code.root)
 
 
 def _fail(error: Exception) -> NoReturn:
     typer.echo(f"error: {error}", err=True)
     raise typer.Exit(2) from error
-
-
-def _stale_note(count: Count) -> DisplayText:
-    subject = (
-        f"{count.root} baseline entry no longer matches"
-        if count.root == 1
-        else f"{count.root} baseline entries no longer match"
-    )
-    return DisplayText(f"{subject}; rerun with --write-baseline to prune")
 
 
 def _existing_baseline(path: BaselinePath, refresh: Verdict) -> Baseline:
@@ -349,49 +251,3 @@ def _against_baseline(
         ValidationError,
     ) as error:
         _fail(error)
-
-
-def _summary_line(
-    report: CheckReport, elapsed: Duration, summary: DisplayText
-) -> DisplayText:
-    return DisplayText(
-        f"Checked {_plural(Count(len(report.checked)), Noun('file'))} "
-        f"in {pretty_duration(elapsed)} - {summary}"
-    )
-
-
-def _report_written(
-    report: CheckReport,
-    outcome: BaselineOutcome,
-    path: BaselinePath,
-    elapsed: Duration,
-    quiet: Verdict,
-) -> NoReturn:
-    for line in _diagnostics(report.model_copy(update={"violations": ()})).to_list():
-        typer.echo(str(line))
-    if not quiet.root:
-        written = _plural(Count(len(outcome.regenerated.root)), Noun("violation"))
-        typer.echo(
-            str(
-                _summary_line(
-                    report, elapsed, DisplayText(f"wrote {written} to {path.root}")
-                )
-            ),
-            err=True,
-        )
-    raise typer.Exit(1 if len(report.errors) > 0 else 0)
-
-
-def _report_run(
-    report: CheckReport, elapsed: Duration, quiet: Verdict, suppressed: Count
-) -> NoReturn:
-    diagnostics = _diagnostics(report).to_list()
-    for line in diagnostics:
-        typer.echo(str(line))
-
-    if not quiet.root:
-        typer.echo(
-            str(_summary_line(report, elapsed, _found(report, suppressed))), err=True
-        )
-
-    raise typer.Exit(1 if len(diagnostics) > 0 else 0)
