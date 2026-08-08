@@ -1,15 +1,18 @@
+from enum import StrEnum
 from typing import override
 
 from iterpy import Arr
-from pydantic import BaseModel, RootModel
+from pydantic import BaseModel, Field, RootModel
 
+from noprim_core.annotations import AnnotationText
 from noprim_core.baseline import BaselineOutcome
+from noprim_core.rules.code import RuleCode
 from noprim_core.rules.registry import rule_for
-from noprim_core.site import ColumnNumber, Filename, LineNumber
+from noprim_core.site import ColumnNumber, Filename, LineNumber, Qualname, Surface
 from noprim_core.verdict import Verdict
 from noprim_core.violation import Violation
 from noprim_io.baseline import BaselinePath
-from noprim_io.check import CheckReport
+from noprim_io.check import CheckReport, ErrorMessage
 
 
 class Duration(RootModel[float]):
@@ -51,8 +54,29 @@ class RunOutcome(BaseModel):
     written: WrittenBaseline | None = None
 
 
+class OutputFormat(StrEnum):
+    TEXT = "text"
+    JSON = "json"
+
+
+class GroupAxis(StrEnum):
+    RULE = "rule"
+    TYPE = "type"
+    NAME = "name"
+    PATH = "path"
+
+
+class GroupAxes(RootModel[tuple[GroupAxis, ...]]):
+    @classmethod
+    def default(cls) -> "GroupAxes":
+        return cls((GroupAxis.RULE,))
+
+
 class RenderOptions(BaseModel):
     quiet: Verdict = Verdict(root=False)
+    output_format: OutputFormat = OutputFormat.TEXT
+    statistics: Verdict = Verdict(root=False)
+    group_by: GroupAxes = Field(default_factory=GroupAxes.default)
 
 
 class Rendered(BaseModel):
@@ -116,15 +140,9 @@ class Diagnostic(BaseModel):
         )
 
 
-def _diagnostics(report: CheckReport) -> Arr[DisplayText]:
-    located: list[Diagnostic] = [
-        *(
-            Diagnostic(
-                filename=v.filename, line=v.line, column=v.column, text=_message(v)
-            )
-            for v in report.violations
-        ),
-        *(
+def _error_diagnostics(report: CheckReport) -> Arr[Diagnostic]:
+    return Arr(
+        [
             Diagnostic(
                 filename=e.filename,
                 line=e.line,
@@ -132,9 +150,155 @@ def _diagnostics(report: CheckReport) -> Arr[DisplayText]:
                 text=DisplayText(e.message.root),
             )
             for e in report.errors
+        ]
+    )
+
+
+def _diagnostics(report: CheckReport) -> Arr[DisplayText]:
+    located = [
+        *(
+            Diagnostic(
+                filename=v.filename, line=v.line, column=v.column, text=_message(v)
+            )
+            for v in report.violations
         ),
+        *_error_diagnostics(report),
     ]
     return Arr(sorted(located)).map(Diagnostic.rendered)
+
+
+class JsonViolation(BaseModel):
+    path: Filename
+    line: LineNumber
+    column: ColumnNumber
+    code: RuleCode
+    surface: Surface
+    name: Qualname
+    qualname: Qualname
+    annotation: AnnotationText
+
+
+class JsonError(BaseModel):
+    path: Filename
+    line: LineNumber
+    column: ColumnNumber
+    message: ErrorMessage
+
+
+class JsonReport(BaseModel):
+    violations: tuple[JsonViolation, ...]
+    errors: tuple[JsonError, ...]
+
+
+def _json_errors(report: CheckReport) -> tuple[JsonError, ...]:
+    return tuple(
+        JsonError(path=e.filename, line=e.line, column=e.column, message=e.message)
+        for e in report.errors
+    )
+
+
+def _json_report(report: CheckReport) -> JsonReport:
+    return JsonReport(
+        violations=tuple(
+            JsonViolation(
+                path=v.filename,
+                line=v.line,
+                column=v.column,
+                code=v.code,
+                surface=v.surface,
+                name=v.qualname.leaf(),
+                qualname=v.qualname,
+                annotation=v.annotation,
+            )
+            for v in report.violations
+        ),
+        errors=_json_errors(report),
+    )
+
+
+class Group(BaseModel):
+    values: tuple[DisplayText, ...]
+    count: Count
+
+    # Ties break on the axis values, so diffing two runs shows what changed rather
+    # than what the walk happened to reach first.
+    def __lt__(self, other: "Group") -> bool:
+        return (-self.count.root, tuple(v.root for v in self.values)) < (
+            -other.count.root,
+            tuple(v.root for v in other.values),
+        )
+
+
+class JsonGroup(BaseModel):
+    count: Count
+    rule: DisplayText | None = None
+    type: DisplayText | None = None
+    name: DisplayText | None = None
+    path: DisplayText | None = None
+
+
+class JsonStatistics(BaseModel):
+    statistics: tuple[JsonGroup, ...]
+    # A file that would not parse contributed no violations to any count, so the
+    # counts are only trustworthy alongside it.
+    errors: tuple[JsonError, ...]
+
+
+def _axis_value(violation: Violation, axis: GroupAxis) -> DisplayText:
+    match axis:
+        case GroupAxis.RULE:
+            return DisplayText(violation.code.root)
+        case GroupAxis.TYPE:
+            return DisplayText(violation.annotation.root)
+        case GroupAxis.NAME:
+            return DisplayText(violation.qualname.leaf().root)
+        case GroupAxis.PATH:
+            return DisplayText(violation.filename.root)
+
+
+def _axis_values(violation: Violation, axes: GroupAxes) -> tuple[DisplayText, ...]:
+    return tuple(_axis_value(violation, axis) for axis in axes.root)
+
+
+class GroupKey(RootModel[str]):
+    @classmethod
+    def of(cls, violation: Violation, axes: GroupAxes) -> "GroupKey":
+        # A separator no annotation, path or identifier can contain, so two axes
+        # cannot collide into one key.
+        return cls("\x00".join(v.root for v in _axis_values(violation, axes)))
+
+
+def _groups(report: CheckReport, axes: GroupAxes) -> Arr[Group]:
+    grouped = (
+        Arr(report.violations)
+        .groupby(lambda v: GroupKey.of(v, axes).root)
+        .map(
+            lambda pair: Group(
+                values=_axis_values(pair[1][0], axes), count=Count(len(pair[1]))
+            )
+        )
+    )
+    return Arr(sorted(grouped))
+
+
+def _statistics_lines(groups: Arr[Group]) -> Arr[DisplayText]:
+    width = max((len(str(group.count.root)) for group in groups), default=0)
+    return groups.map(
+        lambda group: DisplayText(
+            "  ".join([f"{group.count.root:>{width}}", *(v.root for v in group.values)])
+        )
+    )
+
+
+def _json_group(group: Group, axes: GroupAxes) -> JsonGroup:
+    return JsonGroup(
+        count=group.count,
+        **dict(zip((axis.value for axis in axes.root), group.values, strict=True)),
+    )
+
+
+def _document(payload: BaseModel) -> Arr[DisplayText]:
+    return Arr([DisplayText(payload.model_dump_json(indent=2, exclude_none=True))])
 
 
 def _stale_note(count: Count) -> DisplayText:
@@ -179,12 +343,40 @@ def _reportable(outcome: RunOutcome) -> CheckReport:
     return outcome.report.model_copy(update={"violations": ()})
 
 
+def _statistics(report: CheckReport, options: RenderOptions) -> Arr[DisplayText]:
+    groups = _groups(report, options.group_by)
+    if options.output_format == OutputFormat.JSON:
+        return _document(
+            JsonStatistics(
+                statistics=tuple(
+                    groups.map(lambda group: _json_group(group, options.group_by))
+                ),
+                errors=_json_errors(report),
+            )
+        )
+    # A count cannot express a file that would not parse, so those keep their line.
+    return (
+        _error_diagnostics(report)
+        .map(Diagnostic.rendered)
+        .chain(_statistics_lines(groups))
+    )
+
+
+def _body(report: CheckReport, options: RenderOptions) -> Arr[DisplayText]:
+    if options.statistics:
+        return _statistics(report, options)
+    if options.output_format == OutputFormat.JSON:
+        return _document(_json_report(report))
+    return _diagnostics(report)
+
+
 def render(outcome: RunOutcome, elapsed: Duration, options: RenderOptions) -> Rendered:
-    diagnostics = _diagnostics(_reportable(outcome)).to_list()
+    report = _reportable(outcome)
+    found = len(report.violations) + len(report.errors)
     return Rendered(
-        stdout=tuple(diagnostics),
+        stdout=tuple(_body(report, options)),
         stderr=tuple(_notices(outcome, elapsed, options)),
-        exit_code=ExitCode(1 if len(diagnostics) > 0 else 0),
+        exit_code=ExitCode(1 if found > 0 else 0),
     )
 
 
