@@ -3,4 +3,9 @@
 name = "noprim-io"
 version = "0.0.0"
 requires-python = ">=3.13"
-dependencies = ["pydantic>=2", "iterpy>=1.4", "pathspec>=0.12"]
+dependencies = [
+    "pydantic>=2",
+    "iterpy>=1.4",
+    "pathspec>=0.12",
+    "pydantic-settings>=2.15",
+]
