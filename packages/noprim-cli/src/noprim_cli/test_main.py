@@ -7,8 +7,8 @@ from pydantic import RootModel
 from typer.testing import CliRunner
 
 from noprim_cli.main import DisplayText, Duration, app, check, pretty_duration
-from noprim_core import Settings
-from noprim_io import ExistingDirectory
+from noprim_core import Baseline, Settings
+from noprim_io import BaselinePath, ExistingDirectory, read_baseline
 
 runner = CliRunner()
 
@@ -354,6 +354,177 @@ def test_a_directory_vanishing_mid_walk_exits_two(tmp_path: Path) -> None:
     assert "doomed" in _plain(DisplayText(result.output)).root
 
 
+def test_writes_a_baseline_when_the_file_is_absent(tmp_path: Path) -> None:
+    _ = (tmp_path / "bad.py").write_text("def f(a: int) -> None: ...\n")
+    baseline = tmp_path / ".noprim.json"
+
+    result = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert result.stdout == ""
+    assert "wrote 1 violation to" in result.stderr
+    assert baseline.is_file()
+
+
+def test_reports_only_violations_the_baseline_does_not_cover(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(a: int) -> None: ...\n")
+    baseline = tmp_path / ".noprim.json"
+    _ = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+
+    _ = target.write_text("def f(a: int) -> None: ...\ndef g(b: str) -> None: ...\n")
+    result = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert result.stdout.splitlines() == [
+        f'{target}:2:10: parameter "b" is annotated "str"'
+    ]
+    assert "found 1 violation, 1 suppressed by baseline" in result.stderr
+
+
+def test_keeps_suppressing_after_the_violation_moves(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(a: int) -> None: ...\n")
+    baseline = tmp_path / ".noprim.json"
+    _ = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+
+    _ = target.write_text("# a new line\n\ndef f(a: int) -> None: ...\n")
+    result = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert result.stdout == ""
+
+
+def test_a_check_run_never_rewrites_the_baseline(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(a: int) -> None: ...\n")
+    baseline = tmp_path / ".noprim.json"
+    _ = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+    before = baseline.read_text()
+
+    _ = target.write_text("def f() -> None: ...\n")
+    result = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+
+    assert baseline.read_text() == before
+    assert "1 baseline entry no longer matches" in result.stderr
+    assert "--write-baseline" in result.stderr
+
+
+def test_write_baseline_prunes_entries_that_no_longer_match(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(a: int) -> None: ...\n")
+    baseline = tmp_path / ".noprim.json"
+    _ = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+
+    _ = target.write_text("def f() -> None: ...\n")
+    result = runner.invoke(
+        app,
+        ["check", "--baseline", str(baseline), "--write-baseline", str(tmp_path)],
+    )
+
+    assert result.exit_code == 0
+    assert "wrote 0 violations to" in result.stderr
+    assert read_baseline(BaselinePath(baseline)) == Baseline.empty()
+
+
+def test_write_baseline_keeps_entries_for_files_it_did_not_walk(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    _ = (tmp_path / "a" / "one.py").write_text("def f(a: int) -> None: ...\n")
+    _ = (tmp_path / "b" / "two.py").write_text("def g(b: int) -> None: ...\n")
+    baseline = tmp_path / ".noprim.json"
+    _ = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+
+    _ = runner.invoke(
+        app,
+        ["check", "--baseline", str(baseline), "--write-baseline", str(tmp_path / "a")],
+    )
+
+    recorded = read_baseline(BaselinePath(baseline))
+    assert sorted(key.filename.root for key in recorded.root) == [
+        "a/one.py",
+        "b/two.py",
+    ]
+
+
+def test_keeps_entries_for_a_file_that_stopped_parsing(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(a: int) -> None: ...\n")
+    baseline = tmp_path / ".noprim.json"
+    _ = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+
+    _ = target.write_text("def f(a: int -> None:\n")
+    result = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+    _ = runner.invoke(
+        app,
+        ["check", "--baseline", str(baseline), "--write-baseline", str(tmp_path)],
+    )
+
+    assert "no longer match" not in result.stderr
+    recorded = read_baseline(BaselinePath(baseline))
+    assert {key.filename.root for key in recorded.root} == {"bad.py"}
+
+
+def test_write_baseline_drops_entries_for_deleted_files(tmp_path: Path) -> None:
+    _ = (tmp_path / "gone.py").write_text("def f(a: int) -> None: ...\n")
+    _ = (tmp_path / "kept.py").write_text("def g(b: int) -> None: ...\n")
+    baseline = tmp_path / ".noprim.json"
+    _ = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+
+    (tmp_path / "gone.py").unlink()
+    _ = runner.invoke(
+        app,
+        ["check", "--baseline", str(baseline), "--write-baseline", str(tmp_path)],
+    )
+
+    recorded = read_baseline(BaselinePath(baseline))
+    assert {key.filename.root for key in recorded.root} == {"kept.py"}
+
+
+def test_write_baseline_without_a_path_is_rejected(tmp_path: Path) -> None:
+    _ = (tmp_path / "bad.py").write_text("def f(a: int) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", "--write-baseline", str(tmp_path)])
+
+    assert result.exit_code == 2
+    assert (
+        "--write-baseline needs --baseline" in _plain(DisplayText(result.output)).root
+    )
+
+
+def test_a_malformed_baseline_stops_the_run(tmp_path: Path) -> None:
+    _ = (tmp_path / "bad.py").write_text("def f(a: int) -> None: ...\n")
+    baseline = tmp_path / ".noprim.json"
+    _ = baseline.write_text("{oops")
+
+    result = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+
+    assert result.exit_code == 2
+    assert "not a valid noprim baseline" in result.stderr
+
+
+def test_an_unwritable_baseline_path_exits_two(tmp_path: Path) -> None:
+    _ = (tmp_path / "bad.py").write_text("def f(a: int) -> None: ...\n")
+    baseline = tmp_path / "absent" / ".noprim.json"
+
+    result = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+
+    assert result.exit_code == 2
+    assert "error: " in result.stderr
+
+
+def test_syntax_errors_are_not_suppressed_by_a_baseline(tmp_path: Path) -> None:
+    _ = (tmp_path / "broken.py").write_text("def f(a: int -> None:\n")
+    baseline = tmp_path / ".noprim.json"
+
+    result = runner.invoke(app, ["check", "--baseline", str(baseline), str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert "syntax error: " in result.stdout
+
+
 class ConfigText(RootModel[str]):
     pass
 
@@ -426,7 +597,9 @@ def test_an_unknown_config_key_exits_two(
 
 
 def test_every_config_key_has_a_flag_of_the_same_name() -> None:
-    flags = set(inspect.signature(check).parameters) - {"paths", "quiet"}
+    # Run-mode flags: they steer one invocation rather than configure the rules.
+    run_mode = {"paths", "quiet", "baseline", "refresh"}
+    flags = set(inspect.signature(check).parameters) - run_mode
     keys = set(Settings.model_fields) - {"per_path"}
     assert keys == flags
 

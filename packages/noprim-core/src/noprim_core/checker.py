@@ -5,7 +5,7 @@ import tokenize
 from enum import StrEnum
 
 from iterpy import Arr
-from pydantic import BaseModel, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 
 class SourceCode(RootModel[str]):
@@ -13,10 +13,13 @@ class SourceCode(RootModel[str]):
 
 
 class Filename(RootModel[str]):
-    pass
+    # Hashed as part of a baseline key.
+    model_config = ConfigDict(frozen=True)
 
 
 class Qualname(RootModel[str]):
+    model_config = ConfigDict(frozen=True)
+
     def child(self, name: "Qualname") -> "Qualname":
         if self.root == "":
             return name
@@ -95,7 +98,7 @@ class Surface(StrEnum):
 
 
 class AnnotationText(RootModel[str]):
-    pass
+    model_config = ConfigDict(frozen=True)
 
 
 class LineNumber(RootModel[int]):

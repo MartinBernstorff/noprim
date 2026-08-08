@@ -31,10 +31,6 @@ class ErrorMessage(RootModel[str]):
     pass
 
 
-class FileCount(RootModel[int]):
-    pass
-
-
 class IgnorePatterns(RootModel[tuple[str, ...]]):
     pass
 
@@ -56,7 +52,7 @@ class FileError(BaseModel):
 class CheckReport(BaseModel):
     violations: tuple[Violation, ...]
     errors: tuple[FileError, ...]
-    files_checked: FileCount
+    checked: tuple[SourceFile, ...]
 
 
 class _AnchoredSpec(BaseModel):
@@ -205,13 +201,9 @@ def _check_one(file: SourceFile, config: CheckConfig) -> CheckReport:
         violations = check_source(source, Filename(str(file.root)), config)
     except (UnicodeDecodeError, SyntaxError) as error:
         return CheckReport(
-            violations=(),
-            errors=(_file_error(file, error),),
-            files_checked=FileCount(1),
+            violations=(), errors=(_file_error(file, error),), checked=(file,)
         )
-    return CheckReport(
-        violations=tuple(violations), errors=(), files_checked=FileCount(1)
-    )
+    return CheckReport(violations=tuple(violations), errors=(), checked=(file,))
 
 
 def check_paths(paths: CheckPaths, config: DiscoveryConfig) -> CheckReport:
@@ -223,5 +215,5 @@ def check_paths(paths: CheckPaths, config: DiscoveryConfig) -> CheckReport:
     return CheckReport(
         violations=tuple(Arr(reports).map(lambda r: r.violations).flatten()),
         errors=tuple(Arr(reports).map(lambda r: r.errors).flatten()),
-        files_checked=FileCount(len(reports)),
+        checked=tuple(Arr(reports).map(lambda r: r.checked).flatten()),
     )

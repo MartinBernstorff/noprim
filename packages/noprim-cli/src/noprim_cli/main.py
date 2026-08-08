@@ -1,7 +1,7 @@
 from pathlib import Path
 from time import perf_counter
 from tomllib import TOMLDecodeError
-from typing import Annotated, override
+from typing import Annotated, NoReturn, override
 
 import typer
 from iterpy import Arr
@@ -9,6 +9,8 @@ from pydantic import BaseModel, RootModel, ValidationError
 
 from noprim_core import (
     AllowedNames,
+    Baseline,
+    BaselineOutcome,
     ColumnNumber,
     DeniedNames,
     Filename,
@@ -19,20 +21,34 @@ from noprim_core import (
     Surface,
     Verdict,
     Violation,
+    apply_baseline,
 )
 from noprim_io import (
+    BaselinePath,
     CheckPaths,
     CheckReport,
     DiscoveryConfig,
     ExistingDirectory,
     LoadedSettings,
+    MalformedBaselineError,
+    UnsupportedBaselineVersionError,
+    Violations,
     check_paths,
+    keyed_violations,
     load_settings,
+    prunable_files,
+    read_baseline,
+    write_baseline,
 )
 
 
 class ConfigError(typer.BadParameter):
     pass
+
+
+class WriteBaselineWithoutPathError(typer.BadParameter):
+    def __init__(self) -> None:
+        super().__init__("--write-baseline needs --baseline to say which file to write")
 
 
 app = typer.Typer(no_args_is_help=True)
@@ -92,16 +108,19 @@ def _message(violation: Violation) -> DisplayText:
             return DisplayText(f'attribute "{name}" is annotated "{annotation}"')
 
 
-def _found(report: CheckReport) -> DisplayText:
-    violations = (
+def _found(report: CheckReport, suppressed: Count) -> DisplayText:
+    clauses = [
         f"found {_plural(Count(len(report.violations)), Noun('violation'))}"
         if len(report.violations) > 0
-        else "no violations"
-    )
-    if len(report.errors) == 0:
-        return DisplayText(violations)
-    errors = _plural(Count(len(report.errors)), Noun("error"))
-    return DisplayText(f"{violations}, {errors}")
+        else "no violations",
+        *([f"{suppressed.root} suppressed by baseline"] if suppressed.root > 0 else []),
+        *(
+            [str(_plural(Count(len(report.errors)), Noun("error")))]
+            if len(report.errors) > 0
+            else []
+        ),
+    ]
+    return DisplayText(", ".join(clauses))
 
 
 class Diagnostic(BaseModel):
@@ -211,10 +230,23 @@ def check(  # noqa: PLR0913, PLR0917
         bool | None,
         typer.Option("--top-types", help="Also report Any and object. Off by default."),
     ] = None,
+    baseline: Annotated[  # noprim: ignore
+        Path | None,
+        typer.Option(
+            "--baseline",
+            help="Suppress violations recorded in this file, writing it if absent.",
+        ),
+    ] = None,
+    refresh: Annotated[  # noprim: ignore
+        bool,
+        typer.Option("--write-baseline", help="Rewrite an existing baseline file."),
+    ] = False,
     quiet: Annotated[  # noprim: ignore
         bool, typer.Option("--quiet", "-q", help="Suppress the summary.")
     ] = False,
 ) -> None:
+    if refresh and baseline is None:
+        raise WriteBaselineWithoutPathError
     settings = _settings(
         Overrides(
             allow=AllowedNames(tuple(allow)) if allow is not None else None,
@@ -249,19 +281,108 @@ def check(  # noqa: PLR0913, PLR0917
     # A directory can vanish between being listed and being walked, which surfaces
     # as ExistingDirectory failing to validate rather than as an OSError.
     except (OSError, ValidationError) as error:
-        typer.echo(f"error: {error}", err=True)
-        raise typer.Exit(2) from error
+        _fail(error)
     elapsed = Duration(perf_counter() - started)
 
+    if baseline is None:
+        _report_run(report, elapsed, Verdict(root=quiet), Count(0))
+
+    path = BaselinePath(baseline)
+    outcome = _against_baseline(report, CheckPaths(targets), path)
+
+    if refresh or not path.root.exists():
+        try:
+            write_baseline(path, outcome.regenerated)
+        except OSError as error:
+            _fail(error)
+        _report_written(report, outcome, path, elapsed, Verdict(root=quiet))
+
+    if len(outcome.stale) > 0 and not quiet:
+        typer.echo(f"note: {_stale_note(Count(len(outcome.stale)))}", err=True)
+    _report_run(
+        report.model_copy(update={"violations": outcome.reported}),
+        elapsed,
+        Verdict(root=quiet),
+        Count(len(outcome.suppressed)),
+    )
+
+
+def _fail(error: Exception) -> NoReturn:
+    typer.echo(f"error: {error}", err=True)
+    raise typer.Exit(2) from error
+
+
+def _stale_note(count: Count) -> DisplayText:
+    subject = (
+        f"{count.root} baseline entry no longer matches"
+        if count.root == 1
+        else f"{count.root} baseline entries no longer match"
+    )
+    return DisplayText(f"{subject}; rerun with --write-baseline to prune")
+
+
+def _against_baseline(
+    report: CheckReport, targets: CheckPaths, path: BaselinePath
+) -> BaselineOutcome:
+    # A baseline path under a directory that does not exist surfaces as
+    # ExistingDirectory failing to validate rather than as an OSError.
+    try:
+        existing = read_baseline(path) if path.root.exists() else Baseline.empty()
+        return apply_baseline(
+            keyed_violations(Violations(report.violations), path),
+            existing,
+            prunable_files(report, targets, existing, path),
+        )
+    except (
+        MalformedBaselineError,
+        UnsupportedBaselineVersionError,
+        OSError,
+        ValidationError,
+    ) as error:
+        _fail(error)
+
+
+def _summary_line(
+    report: CheckReport, elapsed: Duration, summary: DisplayText
+) -> DisplayText:
+    return DisplayText(
+        f"Checked {_plural(Count(len(report.checked)), Noun('file'))} "
+        f"in {pretty_duration(elapsed)} - {summary}"
+    )
+
+
+def _report_written(
+    report: CheckReport,
+    outcome: BaselineOutcome,
+    path: BaselinePath,
+    elapsed: Duration,
+    quiet: Verdict,
+) -> NoReturn:
+    for line in _diagnostics(report.model_copy(update={"violations": ()})).to_list():
+        typer.echo(str(line))
+    if not quiet.root:
+        written = _plural(Count(len(outcome.regenerated.root)), Noun("violation"))
+        typer.echo(
+            str(
+                _summary_line(
+                    report, elapsed, DisplayText(f"wrote {written} to {path.root}")
+                )
+            ),
+            err=True,
+        )
+    raise typer.Exit(1 if len(report.errors) > 0 else 0)
+
+
+def _report_run(
+    report: CheckReport, elapsed: Duration, quiet: Verdict, suppressed: Count
+) -> NoReturn:
     diagnostics = _diagnostics(report).to_list()
     for line in diagnostics:
         typer.echo(str(line))
 
-    if not quiet:
+    if not quiet.root:
         typer.echo(
-            f"Checked {_plural(Count(report.files_checked.root), Noun('file'))} "
-            f"in {pretty_duration(elapsed)} - {_found(report)}",
-            err=True,
+            str(_summary_line(report, elapsed, _found(report, suppressed))), err=True
         )
 
     raise typer.Exit(1 if len(diagnostics) > 0 else 0)
