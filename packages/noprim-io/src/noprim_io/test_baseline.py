@@ -25,7 +25,8 @@ from noprim_io.baseline import (
     read_baseline,
     write_baseline,
 )
-from noprim_io.check import CheckPaths, CheckReport, ErrorMessage, FileError, SourceFile
+from noprim_io.check import CheckPaths, CheckReport, ErrorMessage, FileError
+from noprim_io.paths import SourceFile
 
 
 def _key(filename: Filename, qualname: Qualname) -> BaselineKey:

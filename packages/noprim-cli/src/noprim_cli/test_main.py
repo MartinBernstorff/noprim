@@ -1,12 +1,14 @@
+import inspect
 import re
 from pathlib import Path
 
 import pytest
+from pydantic import RootModel
 from typer.testing import CliRunner
 
-from noprim_cli.main import DisplayText, Duration, app, pretty_duration
-from noprim_core import Baseline
-from noprim_io import BaselinePath, read_baseline
+from noprim_cli.main import DisplayText, Duration, app, check, pretty_duration
+from noprim_core import Baseline, Settings
+from noprim_io import BaselinePath, ExistingDirectory, read_baseline
 
 runner = CliRunner()
 
@@ -196,7 +198,7 @@ def test_allow_of_a_top_type_exits_two(tmp_path: Path, flags: list[str]) -> None
 
     assert result.exit_code == 2
     assert (
-        "--allow of a type governed by --top-types: Any"
+        "allow of a type governed by top-types: Any"
         in _plain(DisplayText(result.output)).root
     )
 
@@ -282,10 +284,7 @@ def test_name_in_both_flags_exits_two(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 2
-    assert (
-        "passed to both --allow and --deny: int"
-        in _plain(DisplayText(result.output)).root
-    )
+    assert "both allowed and denied: int" in _plain(DisplayText(result.output)).root
 
 
 def test_allow_of_unknown_name_exits_two(tmp_path: Path) -> None:
@@ -296,7 +295,7 @@ def test_allow_of_unknown_name_exits_two(tmp_path: Path) -> None:
 
     assert result.exit_code == 2
     assert (
-        "--allow of a name that is not on the deny-list: itn"
+        "allow of a name that is not on the deny-list: itn"
         in _plain(DisplayText(result.output)).root
     )
 
@@ -524,3 +523,108 @@ def test_syntax_errors_are_not_suppressed_by_a_baseline(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "syntax error: " in result.stdout
+
+
+class ConfigText(RootModel[str]):
+    pass
+
+
+def _project(root: ExistingDirectory, config: ConfigText) -> None:
+    (root.root / ".git").mkdir()
+    _ = (root.root / "noprim.toml").write_text(config.root)
+    _ = (root.root / "a.py").write_text("def f(x: str) -> None: ...\n")
+
+
+def test_a_config_file_in_the_project_is_applied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _project(ExistingDirectory(tmp_path), ConfigText('allow = ["str"]\n'))
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["check", "a.py"])
+
+    assert result.exit_code == 0
+
+
+def test_a_flag_replaces_the_same_key_from_the_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _project(ExistingDirectory(tmp_path), ConfigText('allow = ["str"]\n'))
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["check", "--allow", "int", "a.py"])
+
+    assert result.exit_code == 1
+    assert 'parameter "x" is annotated "str"' in result.stdout
+
+
+def test_a_per_path_override_from_the_config_is_applied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _project(
+        ExistingDirectory(tmp_path),
+        ConfigText('[[per-path]]\npaths = ["a.py"]\nallow = ["str"]\n'),
+    )
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["check", "a.py"])
+
+    assert result.exit_code == 0
+
+
+def test_an_unreadable_config_exits_two(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _project(ExistingDirectory(tmp_path), ConfigText("deny = [\n"))
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["check", "a.py"])
+
+    assert result.exit_code == 2
+    assert "Checked" not in result.stderr
+
+
+def test_an_unknown_config_key_exits_two(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _project(ExistingDirectory(tmp_path), ConfigText('denied = ["str"]\n'))
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["check", "a.py"])
+
+    assert result.exit_code == 2
+    assert "denied" in _plain(DisplayText(result.output)).root
+
+
+def test_every_config_key_has_a_flag_of_the_same_name() -> None:
+    # Run-mode flags: they steer one invocation rather than configure the rules.
+    run_mode = {"paths", "quiet", "baseline", "refresh"}
+    flags = set(inspect.signature(check).parameters) - run_mode
+    keys = set(Settings.model_fields) - {"per_path"}
+    assert keys == flags
+
+
+def test_a_rule_key_can_come_from_the_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".git").mkdir()
+    _ = (tmp_path / "noprim.toml").write_text("top-types = true\n")
+    _ = (tmp_path / "a.py").write_text("def f(x: Any) -> None: ...\n")
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["check", "a.py"])
+
+    assert result.stdout.splitlines() == ['a.py:1:10: parameter "x" is annotated "Any"']
+
+
+def test_a_boolean_config_key_survives_when_its_flag_is_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".git").mkdir()
+    _ = (tmp_path / "noprim.toml").write_text("check-predicates = true\n")
+    _ = (tmp_path / "a.py").write_text("def is_ready(x: Name) -> bool: ...\n")
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["check", "--top-types", "a.py"])
+
+    assert result.stdout.splitlines() == ['a.py:1:26: return type is annotated "bool"']

@@ -61,9 +61,11 @@ Some signatures are not the author's to choose, so noprim does not report them:
 Anything else that is genuinely forced can be suppressed a line at a time:
 
 ```python
-def check(quiet: Annotated[  # noprim: ignore
-    bool, typer.Option("--quiet")
-] = False) -> None: ...
+def check(
+    quiet: Annotated[  # noprim: ignore
+        bool, typer.Option("--quiet")
+    ] = False,
+) -> None: ...
 ```
 
 The comment suppresses only the line it sits on, and must end the line — which leaves
@@ -89,11 +91,59 @@ function's name, not one of its own, so it is never skipped this way.
 | `--top-types` | Also report `Any` and `object`. Off by default. |
 | `--check-predicates` | Report functions returning `bool` instead of skipping them. |
 | `--ignore-names NAME` | Skip parameters and attributes called `NAME`. Repeatable. |
-| `--exclude GLOB` | Skip paths while walking. Gitignore syntax, anchored at the repo root. Repeatable. |
+| `--exclude GLOB` | Skip paths while walking. Gitignore syntax, anchored at the config file's directory, or the repo root when there is no config. Repeatable. |
 | `--quiet`, `-q` | Suppress the trailing summary. |
 
 Directories are walked recursively, honouring every `.gitignore` from the repo root
 down. A file named explicitly on the command line is checked even if it is ignored.
+
+## Configuration
+
+Settings live in `noprim.toml`, or in `pyproject.toml` under `[tool.noprim]`. noprim
+walks up from the working directory to the repo root and uses the first one it finds;
+`noprim.toml` wins over a `pyproject.toml` beside it. A `pyproject.toml` without the
+table is not a config file, so it does not stop the search.
+
+```toml
+allow = ["str"]
+deny = ["Enum"]
+exclude = ["generated/**"]
+ignore-names = ["kwargs", "size"]
+check-predicates = true
+top-types = true
+```
+
+Every key is a flag of the same name, and passing that flag replaces the key outright
+rather than adding to it — `--deny Enum` ignores whatever `deny` the file set.
+
+### Per-path overrides
+
+One deny-list for a whole codebase is the wrong shape: the domain deserves stricter
+rules than the Django layer. `per-path` entries adjust the list for the paths they
+match.
+
+```toml
+[[per-path]]
+paths = ["domain/**", "api/**"]
+deny = ["Enum", "Flag"]
+
+[[per-path]]
+paths = ["test_infra/**", "django_app/**"]
+allow = ["str", "int", "bool"]
+```
+
+Overrides carry `allow` and `deny` only. The remaining keys are whole-run settings:
+`exclude` decides which files are walked at all, and the rest are rules rather than
+deny-lists.
+
+Patterns use gitignore syntax, anchored at the directory holding the config, so
+`test_*.py` matches at any depth and `domain/**` does not. Every entry that matches a
+file contributes — there is no first-match or most-specific rule — and each is applied
+on top of the top-level lists, so an override can relax something the top level denied.
+
+Allowing a name that nothing denies is an error, as is allowing and denying the same
+name for the same path, as is a key noprim does not recognise. A config that quietly
+does nothing is the failure this feature exists to prevent.
 
 ## Dogfooding
 

@@ -1,5 +1,6 @@
 from pathlib import Path
 from time import perf_counter
+from tomllib import TOMLDecodeError
 from typing import Annotated, NoReturn, override
 
 import typer
@@ -7,16 +8,17 @@ from iterpy import Arr
 from pydantic import BaseModel, RootModel, ValidationError
 
 from noprim_core import (
+    AllowedNames,
     Baseline,
     BaselineOutcome,
-    CheckConfig,
     ColumnNumber,
-    DeniedTypes,
+    DeniedNames,
     Filename,
     IgnoredNames,
     LineNumber,
+    PathPatterns,
+    Settings,
     Surface,
-    TopTypes,
     Verdict,
     Violation,
     apply_baseline,
@@ -26,54 +28,27 @@ from noprim_io import (
     CheckPaths,
     CheckReport,
     DiscoveryConfig,
-    IgnorePatterns,
+    ExistingDirectory,
+    LoadedSettings,
     MalformedBaselineError,
     UnsupportedBaselineVersionError,
     Violations,
     check_paths,
     keyed_violations,
+    load_settings,
     prunable_files,
     read_baseline,
     write_baseline,
 )
 
 
-class AllowedNames(RootModel[tuple[str, ...]]):
+class ConfigError(typer.BadParameter):
     pass
-
-
-class DeniedNames(RootModel[tuple[str, ...]]):
-    pass
-
-
-class AllowedAndDeniedError(typer.BadParameter):
-    def __init__(self, names: AllowedNames) -> None:
-        super().__init__(f"passed to both --allow and --deny: {', '.join(names.root)}")
-
-
-class EmptyNameError(typer.BadParameter):
-    def __init__(self) -> None:
-        super().__init__("--allow and --deny need a type name; got an empty one")
-
-
-class NotOnDenyListError(typer.BadParameter):
-    def __init__(self, names: AllowedNames) -> None:
-        super().__init__(
-            f"--allow of a name that is not on the deny-list: {', '.join(names.root)}"
-        )
 
 
 class WriteBaselineWithoutPathError(typer.BadParameter):
     def __init__(self) -> None:
         super().__init__("--write-baseline needs --baseline to say which file to write")
-
-
-class AllowedTopTypeError(typer.BadParameter):
-    def __init__(self, names: AllowedNames) -> None:
-        super().__init__(
-            f"--allow of a type governed by --top-types: {', '.join(names.root)}. "
-            "Drop --top-types instead; the rule is all or nothing."
-        )
 
 
 app = typer.Typer(no_args_is_help=True)
@@ -188,32 +163,34 @@ def _diagnostics(report: CheckReport) -> Arr[DisplayText]:
     return Arr(sorted(located)).map(Diagnostic.rendered)
 
 
-def _resolve_config(
-    allow: AllowedNames,
-    deny: DeniedNames,
-    check_predicates: Verdict,
-    ignore_names: IgnoredNames,
-    top_types: Verdict,
-) -> CheckConfig:
-    default = DeniedTypes.default().root
-    # "" is the sentinel for unresolvable annotations, so denying it matches everything.
-    if "" in set(allow.root) | set(deny.root):
-        raise EmptyNameError
-    conflicting = sorted(set(allow.root) & set(deny.root))
-    if len(conflicting) > 0:
-        raise AllowedAndDeniedError(AllowedNames(tuple(conflicting)))
-    top = sorted(set(allow.root) & TopTypes.default().root)
-    if len(top) > 0:
-        raise AllowedTopTypeError(AllowedNames(tuple(top)))
-    unknown = sorted(set(allow.root) - default)
-    if len(unknown) > 0:
-        raise NotOnDenyListError(AllowedNames(tuple(unknown)))
-    return CheckConfig(
-        denied=DeniedTypes((default - set(allow.root)) | set(deny.root)),
-        check_predicates=check_predicates,
-        ignored_names=ignore_names,
-        top_types=top_types,
+class Overrides(BaseModel):
+    allow: AllowedNames | None
+    deny: DeniedNames | None
+    exclude: PathPatterns | None
+    ignore_names: IgnoredNames | None
+    check_predicates: Verdict | None
+    top_types: Verdict | None
+
+
+def _overridden(loaded: LoadedSettings, overrides: Overrides) -> LoadedSettings:
+    given = {
+        key: value for key, value in overrides.model_dump().items() if value is not None
+    }
+    if len(given) == 0:
+        return loaded
+    return loaded.model_copy(
+        update={
+            "settings": Settings.model_validate(loaded.settings.model_dump() | given)
+        }
     )
+
+
+def _settings(overrides: Overrides) -> LoadedSettings:
+    try:
+        loaded = load_settings(ExistingDirectory(Path.cwd()))
+        return _overridden(loaded, overrides)
+    except (OSError, TOMLDecodeError, ValidationError) as error:
+        raise ConfigError(str(error)) from error
 
 
 # Typer derives the command-line interface from these annotations: a RootModel here
@@ -243,16 +220,16 @@ def check(  # noqa: PLR0913, PLR0917
         typer.Option("--exclude", help="Glob to skip while walking. Repeatable."),
     ] = None,
     check_predicates: Annotated[  # noprim: ignore
-        bool,
+        bool | None,
         typer.Option(
             "--check-predicates",
             help="Report functions returning bool instead of skipping them.",
         ),
-    ] = False,
+    ] = None,
     top_types: Annotated[  # noprim: ignore
-        bool,
+        bool | None,
         typer.Option("--top-types", help="Also report Any and object. Off by default."),
-    ] = False,
+    ] = None,
     baseline: Annotated[  # noprim: ignore
         Path | None,
         typer.Option(
@@ -268,15 +245,24 @@ def check(  # noqa: PLR0913, PLR0917
         bool, typer.Option("--quiet", "-q", help="Suppress the summary.")
     ] = False,
 ) -> None:
-    source = _resolve_config(
-        AllowedNames(tuple(allow if allow is not None else ())),
-        DeniedNames(tuple(deny if deny is not None else ())),
-        Verdict(check_predicates),
-        IgnoredNames(frozenset(ignore_names if ignore_names is not None else ())),
-        Verdict(top_types),
-    )
     if refresh and baseline is None:
         raise WriteBaselineWithoutPathError
+    settings = _settings(
+        Overrides(
+            allow=AllowedNames(tuple(allow)) if allow is not None else None,
+            deny=DeniedNames(tuple(deny)) if deny is not None else None,
+            exclude=PathPatterns(tuple(exclude)) if exclude is not None else None,
+            ignore_names=(
+                IgnoredNames(frozenset(ignore_names))
+                if ignore_names is not None
+                else None
+            ),
+            check_predicates=(
+                Verdict(root=check_predicates) if check_predicates is not None else None
+            ),
+            top_types=Verdict(root=top_types) if top_types is not None else None,
+        )
+    )
 
     targets = tuple(paths) if paths is not None else (Path.cwd(),)
     missing = [path for path in targets if not path.exists()]
@@ -289,10 +275,7 @@ def check(  # noqa: PLR0913, PLR0917
     try:
         report = check_paths(
             CheckPaths(targets),
-            DiscoveryConfig(
-                excludes=IgnorePatterns(tuple(exclude if exclude is not None else ())),
-                source=source,
-            ),
+            DiscoveryConfig(settings=settings),
         )
 
     # A directory can vanish between being listed and being walked, which surfaces
@@ -302,7 +285,7 @@ def check(  # noqa: PLR0913, PLR0917
     elapsed = Duration(perf_counter() - started)
 
     if baseline is None:
-        _report_run(report, elapsed, Verdict(quiet), Count(0))
+        _report_run(report, elapsed, Verdict(root=quiet), Count(0))
 
     path = BaselinePath(baseline)
     outcome = _against_baseline(report, CheckPaths(targets), path)
@@ -312,14 +295,14 @@ def check(  # noqa: PLR0913, PLR0917
             write_baseline(path, outcome.regenerated)
         except OSError as error:
             _fail(error)
-        _report_written(report, outcome, path, elapsed, Verdict(quiet))
+        _report_written(report, outcome, path, elapsed, Verdict(root=quiet))
 
     if len(outcome.stale) > 0 and not quiet:
         typer.echo(f"note: {_stale_note(Count(len(outcome.stale)))}", err=True)
     _report_run(
         report.model_copy(update={"violations": outcome.reported}),
         elapsed,
-        Verdict(quiet),
+        Verdict(root=quiet),
         Count(len(outcome.suppressed)),
     )
 

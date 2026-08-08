@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pathspec
 from iterpy import Arr
-from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator
+from pydantic import BaseModel, Field, RootModel
 
 from noprim_core import (
     CheckConfig,
@@ -14,33 +14,17 @@ from noprim_core import (
     Violation,
     check_source,
 )
+from noprim_io.paths import (
+    DirectoryEntry,
+    ExistingDirectory,
+    SourceFile,
+    repo_root,
+)
+from noprim_io.settings import LoadedSettings
 
 
 class CheckPaths(RootModel[tuple[Path, ...]]):
     pass
-
-
-class DirectoryEntry(RootModel[Path]):
-    pass
-
-
-class SourceFile(RootModel[Path]):
-    # Deduplicated with a set when the same file is reached by two paths.
-    model_config = ConfigDict(frozen=True)
-
-
-class NotADirectoryValueError(ValueError):
-    def __init__(self, value: Path) -> None:
-        super().__init__(f"not a directory: {value}")
-
-
-class ExistingDirectory(RootModel[Path]):
-    @field_validator("root")
-    @classmethod
-    def _must_be_a_directory(cls, value: Path) -> Path:
-        if not value.is_dir():
-            raise NotADirectoryValueError(value)
-        return value
 
 
 class ErrorMessage(RootModel[str]):
@@ -52,8 +36,10 @@ class IgnorePatterns(RootModel[tuple[str, ...]]):
 
 
 class DiscoveryConfig(BaseModel):
-    excludes: IgnorePatterns = IgnorePatterns(())
-    source: CheckConfig = Field(default_factory=CheckConfig)
+    settings: LoadedSettings = Field(default_factory=LoadedSettings.empty)
+
+    def for_file(self, file: SourceFile) -> CheckConfig:
+        return self.settings.for_file(file)
 
 
 class FileError(BaseModel):
@@ -76,9 +62,16 @@ class _AnchoredSpec(BaseModel):
     spec: pathspec.PathSpec[pathspec.Pattern]
 
     def matches(self, entry: DirectoryEntry) -> Verdict:
-        relative = entry.root.relative_to(self.anchor.root).as_posix()
+        # Entries keep the spelling the caller typed, so both sides need the same
+        # form before one can be expressed relative to the other.
+        target = entry.root.absolute()
+        anchor = self.anchor.root.absolute()
+        if not target.is_relative_to(anchor):
+            return Verdict(root=False)
         suffix = "/" if entry.root.is_dir() else ""
-        return Verdict(self.spec.match_file(f"{relative}{suffix}"))
+        return Verdict(
+            self.spec.match_file(f"{target.relative_to(anchor).as_posix()}{suffix}")
+        )
 
 
 def _spec_anchored_at(
@@ -102,17 +95,6 @@ def _gitignore_at(directory: ExistingDirectory) -> Arr[_AnchoredSpec]:
         return Arr([])
     return _spec_anchored_at(
         directory, IgnorePatterns(tuple(gitignore.read_text().splitlines()))
-    )
-
-
-def repo_root(start: ExistingDirectory) -> ExistingDirectory:
-    return next(
-        (
-            ExistingDirectory(ancestor)
-            for ancestor in [start.root, *start.root.parents]
-            if (ancestor / ".git").exists()
-        ),
-        start,
     )
 
 
@@ -162,23 +144,30 @@ def _matches_any(entry: DirectoryEntry, specs: Arr[_AnchoredSpec]) -> Verdict:
     )
 
 
-def _walk(directory: ExistingDirectory, excludes: IgnorePatterns) -> Arr[SourceFile]:
-    root = repo_root(directory)
+def _walk(directory: ExistingDirectory, config: DiscoveryConfig) -> Arr[SourceFile]:
+    found = repo_root(directory)
+    root = directory if found is None else found
+    anchor = config.settings.anchor
     inherited = (
         _ancestors_below(root, directory)
         .map(_gitignore_at)
         .flatten()
-        .chain(_spec_anchored_at(root, excludes))
+        .chain(
+            _spec_anchored_at(
+                root if anchor is None else anchor,
+                IgnorePatterns(config.settings.excludes().root),
+            )
+        )
     )
     return _files_under(directory, inherited)
 
 
-def _files_to_check(paths: CheckPaths, excludes: IgnorePatterns) -> Arr[SourceFile]:
+def _files_to_check(paths: CheckPaths, config: DiscoveryConfig) -> Arr[SourceFile]:
     return (
         Arr(paths.root)
         .map(
             lambda path: (
-                _walk(ExistingDirectory(path), excludes)
+                _walk(ExistingDirectory(path), config)
                 if path.is_dir()
                 else Arr([SourceFile(path)])
             )
@@ -219,8 +208,8 @@ def _check_one(file: SourceFile, config: CheckConfig) -> CheckReport:
 
 def check_paths(paths: CheckPaths, config: DiscoveryConfig) -> CheckReport:
     reports = (
-        _files_to_check(paths, config.excludes)
-        .map(lambda file: _check_one(file, config.source))
+        _files_to_check(paths, config)
+        .map(lambda file: _check_one(file, config.for_file(file)))
         .to_list()
     )
     return CheckReport(

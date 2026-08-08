@@ -14,3 +14,6 @@ from noprim_io.check import DiscoveryConfig as DiscoveryConfig
 from noprim_io.check import FileError as FileError
 from noprim_io.check import IgnorePatterns as IgnorePatterns
 from noprim_io.check import check_paths as check_paths
+from noprim_io.paths import ExistingDirectory as ExistingDirectory
+from noprim_io.settings import LoadedSettings as LoadedSettings
+from noprim_io.settings import load_settings as load_settings

@@ -4,8 +4,8 @@ CLI that lints Python for primitive-typed function parameters.
 
 ## Layout
 
-- `packages/noprim-core/` (`noprim_core`) — pure linting logic and value objects. No CLI, no I/O.
-- `packages/noprim-io/` (`noprim_io`) — path walking and file reading.
+- `packages/noprim-core/` (`noprim_core`) — pure linting logic and value objects, plus the settings schema and per-path resolution. No CLI, no I/O.
+- `packages/noprim-io/` (`noprim_io`) — path walking, file reading, and config discovery.
 - `packages/noprim-cli/` (`noprim_cli`) — Typer app. Argument parsing and output formatting only.
 
 Dependencies point one way: `noprim-core` <- `noprim-io` <- `noprim-cli`. Enforced by `tach` (`moon run :modularity`).
@@ -21,6 +21,19 @@ The per-package `pyproject.toml` files are **not** distributions — they have n
 **Check the baseline into git.** It is shared debt: a gitignored one means every developer and CI silently suppresses something different.
 
 Once the file exists, a `check` run never writes to disk. Entries that no longer match are ignored and reported on stderr; they are pruned the next time the file is written. Prune candidates are only the files the run actually analysed, plus entries under a checked path whose file is gone — so re-baselining a subdirectory leaves the rest of the file alone, and a file that stopped parsing keeps its entries rather than losing them to a syntax error.
+
+## Settings
+
+The schema (`noprim_core.settings`) is one `Settings` model: `allow`, `deny`,
+`exclude`, and `per-path` overrides. Resolution — unioning every matching override on
+top of the top-level lists into a `CheckConfig` — is pure logic over a relative path,
+so it lives in core alongside `pathspec`. `noprim_io.settings` does the I/O half:
+walking up for the file and reading it through `pydantic-settings`' TOML sources.
+
+Two things keep this honest, and both will fail loudly if you break them:
+
+- **Every config key is a CLI flag of the same name.** `test_every_config_key_has_a_flag_of_the_same_name` compares `Settings.model_fields` against `check`'s signature, so adding one without the other fails.
+- **`LoadedSettings.anchor` is `None` when no config was found.** Patterns then have no directory to hang off, and the walk falls back to the target's repo root — which is what makes `--exclude` behave the same with and without a config file.
 
 ## Python
 

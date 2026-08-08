@@ -17,13 +17,8 @@ from noprim_core import (
     Verdict,
     Violation,
 )
-from noprim_io.check import (
-    CheckPaths,
-    CheckReport,
-    ExistingDirectory,
-    SourceFile,
-    repo_root,
-)
+from noprim_io.check import CheckPaths, CheckReport
+from noprim_io.paths import ExistingDirectory, SourceFile, repo_root
 
 
 class BaselinePath(RootModel[Path]):
@@ -68,9 +63,7 @@ class _Anchor(RootModel[ExistingDirectory]):
     def of(cls, path: BaselinePath) -> "_Anchor":
         directory = ExistingDirectory(path.root.resolve().parent)
         root = repo_root(directory)
-        if (root.root / ".git").exists():
-            return cls(root)
-        return cls(directory)
+        return cls(directory if root is None else root)
 
     def relative(self, file: SourceFile) -> Filename:
         resolved = file.root.resolve()
