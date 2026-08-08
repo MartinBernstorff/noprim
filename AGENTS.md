@@ -14,6 +14,14 @@ Three modules, **one distribution**. The root `pyproject.toml` is the only publi
 
 The per-package `pyproject.toml` files are **not** distributions — they have no `[build-system]` and are never built. They exist so `tach check-external` can enforce per-module external dependencies, which is what keeps `typer` out of `noprim-core`. Add a third-party dependency to both the module's manifest and the root's: the module's manifest satisfies `tach`, and the root's is what actually ships. Forgetting the root one usually surfaces as `moon run root:smoke` failing, though a lazily-imported dependency can slip past it.
 
+## Baselines
+
+`noprim check --baseline .noprim.json` suppresses violations recorded in that file, writing it when it does not yet exist; `--write-baseline` refreshes an existing one. Entries key on `(file, surface, qualname, annotation)` — never a line number — so they survive edits that move code around.
+
+**Check the baseline into git.** It is shared debt: a gitignored one means every developer and CI silently suppresses something different.
+
+A `check` run never writes to disk. Entries that no longer match are ignored and reported on stderr; they are pruned the next time the file is written. Only entries under a path the run actually walked are prune candidates, so re-baselining a subdirectory leaves the rest of the file alone.
+
 ## Python
 
 - **Never take primitives as function parameters.** Wrap them in a Pydantic `RootModel` — a `str` says nothing about what it is; `UserId` does. This is what the project lints for, so dogfood it.

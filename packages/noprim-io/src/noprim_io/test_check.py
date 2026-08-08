@@ -180,3 +180,12 @@ def test_unparseable_file_is_reported_as_an_error_without_stopping_the_run(
     assert [e.filename for e in report.errors] == [str(tmp_path / "broken.py")]
     assert report.errors[0].line == 2
     assert report.errors[0].message.startswith("syntax error: ")
+
+
+def test_reports_the_files_it_walked(tmp_path: Path) -> None:
+    _ = (tmp_path / "a.py").write_text("def f(a: int) -> None: ...\n")
+    _ = (tmp_path / "b.py").write_text("def g() -> None: ...\n")
+
+    report = check_paths(CheckPaths((tmp_path,)), DiscoveryConfig())
+
+    assert sorted(report.checked) == [str(tmp_path / "a.py"), str(tmp_path / "b.py")]

@@ -30,7 +30,7 @@ class FileError(BaseModel):
 class CheckReport(BaseModel):
     violations: tuple[Violation, ...]
     errors: tuple[FileError, ...]
-    files_checked: int
+    checked: tuple[str, ...]
 
 
 class _AnchoredSpec(BaseModel):
@@ -67,7 +67,7 @@ def _gitignore_at(directory: Path) -> Arr[_AnchoredSpec]:
     )
 
 
-def _repo_root(start: Path) -> Path:
+def repo_root(start: Path) -> Path:
     return next(
         (
             ancestor
@@ -114,7 +114,7 @@ def _matches_any(path: Path, specs: Arr[_AnchoredSpec]) -> bool:
 
 
 def _walk(directory: Path, excludes: IgnorePatterns) -> Arr[Path]:
-    root = _repo_root(directory)
+    root = repo_root(directory)
     inherited = (
         _ancestors_below(root, directory)
         .map(_gitignore_at)
@@ -153,9 +153,9 @@ def _check_one(path: Path, config: CheckConfig) -> CheckReport:
         violations = check_source(source, Filename(str(path)), config)
     except (UnicodeDecodeError, SyntaxError) as error:
         return CheckReport(
-            violations=(), errors=(_file_error(path, error),), files_checked=1
+            violations=(), errors=(_file_error(path, error),), checked=(str(path),)
         )
-    return CheckReport(violations=tuple(violations), errors=(), files_checked=1)
+    return CheckReport(violations=tuple(violations), errors=(), checked=(str(path),))
 
 
 def check_paths(paths: CheckPaths, config: DiscoveryConfig) -> CheckReport:
@@ -167,5 +167,5 @@ def check_paths(paths: CheckPaths, config: DiscoveryConfig) -> CheckReport:
     return CheckReport(
         violations=tuple(Arr(reports).map(lambda r: r.violations).flatten()),
         errors=tuple(Arr(reports).map(lambda r: r.errors).flatten()),
-        files_checked=len(reports),
+        checked=tuple(Arr(reports).map(lambda r: r.checked).flatten()),
     )

@@ -1,17 +1,35 @@
 from pathlib import Path
 from time import perf_counter
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 import typer
 from pydantic import RootModel
 
-from noprim_core import CheckConfig, DeniedTypes, Surface, Violation
+from noprim_core import (
+    Baseline,
+    BaselineOutcome,
+    CheckConfig,
+    DeniedTypes,
+    Surface,
+    Violation,
+    apply_baseline,
+)
 from noprim_io import (
+    BaselinePath,
     CheckPaths,
     CheckReport,
     DiscoveryConfig,
+    FileError,
+    Filenames,
     IgnorePatterns,
+    MalformedBaselineError,
+    UnsupportedBaselineVersionError,
+    Violations,
     check_paths,
+    keyed_violations,
+    read_baseline,
+    walked_files,
+    write_baseline,
 )
 
 
@@ -55,6 +73,15 @@ class Noun(RootModel[str]):
     pass
 
 
+class Errors(RootModel[tuple[FileError, ...]]):
+    pass
+
+
+class WriteBaselineWithoutPathError(typer.BadParameter):
+    def __init__(self) -> None:
+        super().__init__("--write-baseline needs --baseline to say which file to write")
+
+
 @app.callback()
 def cli() -> None:
     """Find function parameters annotated with primitive types."""
@@ -85,21 +112,21 @@ def _message(violation: Violation) -> str:
             return f'attribute "{name}" is annotated "{violation.annotation}"'
 
 
-def _found(report: CheckReport) -> str:
-    violations = (
-        f"found {_plural(Count(len(report.violations)), Noun('violation'))}"
-        if len(report.violations) > 0
-        else "no violations"
-    )
-    if len(report.errors) == 0:
-        return violations
-    return f"{violations}, {_plural(Count(len(report.errors)), Noun('error'))}"
+def _found(reported: Count, suppressed: Count, errors: Count) -> str:
+    clauses = [
+        f"found {_plural(reported, Noun('violation'))}"
+        if reported.root > 0
+        else "no violations",
+        *([f"{suppressed.root} suppressed by baseline"] if suppressed.root > 0 else []),
+        *([_plural(errors, Noun("error"))] if errors.root > 0 else []),
+    ]
+    return ", ".join(clauses)
 
 
-def _diagnostics(report: CheckReport) -> list[str]:
+def _diagnostics(violations: Violations, errors: Errors) -> list[str]:
     located = sorted(
-        [(v.filename, v.line, v.column, _message(v)) for v in report.violations]
-        + [(e.filename, e.line, e.column, e.message) for e in report.errors]
+        [(v.filename, v.line, v.column, _message(v)) for v in violations.root]
+        + [(e.filename, e.line, e.column, e.message) for e in errors.root]
     )
     return [
         f"{filename}:{line}:{column}: {text}"
@@ -138,6 +165,17 @@ def check(
         list[str] | None,
         typer.Option("--exclude", help="Glob to skip while walking. Repeatable."),
     ] = None,
+    baseline: Annotated[
+        Path | None,
+        typer.Option(
+            "--baseline",
+            help="Suppress violations recorded in this file, writing it if absent.",
+        ),
+    ] = None,
+    refresh: Annotated[
+        bool,
+        typer.Option("--write-baseline", help="Rewrite an existing baseline file."),
+    ] = False,
     quiet: Annotated[
         bool, typer.Option("--quiet", "-q", help="Suppress the summary.")
     ] = False,
@@ -146,6 +184,8 @@ def check(
         AllowedNames(tuple(allow if allow is not None else ())),
         DeniedNames(tuple(deny if deny is not None else ())),
     )
+    if refresh and baseline is None:
+        raise WriteBaselineWithoutPathError
 
     targets = tuple(paths) if paths is not None else (Path.cwd(),)
     missing = [path for path in targets if not path.exists()]
@@ -168,14 +208,91 @@ def check(
         raise typer.Exit(2) from error
     elapsed = Duration(perf_counter() - started)
 
-    diagnostics = _diagnostics(report)
+    if baseline is None:
+        _report_run(report, elapsed, quiet=quiet, suppressed=Count(0))
+
+    path = BaselinePath(baseline)
+    outcome = _against_baseline(report, path)
+
+    if refresh or not path.root.exists():
+        try:
+            write_baseline(path, outcome.regenerated)
+        except OSError as error:
+            typer.echo(f"error: {error}", err=True)
+            raise typer.Exit(2) from error
+        _report_written(report, outcome, path, elapsed, quiet=quiet)
+
+    if len(outcome.stale) > 0 and not quiet:
+        typer.echo(f"note: {_stale_note(Count(len(outcome.stale)))}", err=True)
+    _report_run(
+        report.model_copy(update={"violations": outcome.reported}),
+        elapsed,
+        quiet=quiet,
+        suppressed=Count(len(outcome.suppressed)),
+    )
+
+
+def _stale_note(count: Count) -> str:
+    subject = (
+        f"{count.root} baseline entry no longer matches"
+        if count.root == 1
+        else f"{count.root} baseline entries no longer match"
+    )
+    return f"{subject}; rerun with --write-baseline to prune"
+
+
+def _against_baseline(report: CheckReport, path: BaselinePath) -> BaselineOutcome:
+    try:
+        existing = read_baseline(path) if path.root.exists() else Baseline.empty()
+    except (MalformedBaselineError, UnsupportedBaselineVersionError, OSError) as error:
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(2) from error
+    return apply_baseline(
+        keyed_violations(Violations(report.violations), path),
+        existing,
+        walked_files(Filenames(report.checked), path),
+    )
+
+
+def _report_written(
+    report: CheckReport,
+    outcome: BaselineOutcome,
+    path: BaselinePath,
+    elapsed: Duration,
+    *,
+    quiet: bool,
+) -> NoReturn:
+    for line in _diagnostics(Violations(()), Errors(report.errors)):
+        typer.echo(line)
+    if not quiet:
+        typer.echo(
+            f"Checked {_plural(Count(len(report.checked)), Noun('file'))} "
+            f"in {pretty_duration(elapsed)} - wrote "
+            f"{_plural(Count(len(outcome.regenerated.root)), Noun('violation'))} "
+            f"to {path.root}",
+            err=True,
+        )
+    raise typer.Exit(1 if len(report.errors) > 0 else 0)
+
+
+def _report_run(
+    report: CheckReport,
+    elapsed: Duration,
+    *,
+    quiet: bool,
+    suppressed: Count,
+) -> NoReturn:
+    diagnostics = _diagnostics(Violations(report.violations), Errors(report.errors))
     for line in diagnostics:
         typer.echo(line)
 
     if not quiet:
+        summary = _found(
+            Count(len(report.violations)), suppressed, Count(len(report.errors))
+        )
         typer.echo(
-            f"Checked {_plural(Count(report.files_checked), Noun('file'))} "
-            f"in {pretty_duration(elapsed)} - {_found(report)}",
+            f"Checked {_plural(Count(len(report.checked)), Noun('file'))} "
+            f"in {pretty_duration(elapsed)} - {summary}",
             err=True,
         )
 
