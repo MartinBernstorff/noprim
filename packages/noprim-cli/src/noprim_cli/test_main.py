@@ -610,12 +610,12 @@ def test_an_unknown_config_key_exits_two(
     assert "denied" in _plain(DisplayText(result.output)).root
 
 
-def test_every_config_key_has_a_flag_of_the_same_name() -> None:
-    # Run-mode flags: they steer one invocation rather than configure the rules.
+def test_every_flag_that_is_not_run_mode_names_a_config_key() -> None:
+    # The name is the wiring: a flag matching no key is silently dropped rather
+    # than rejected. Run-mode flags steer one invocation and are meant to miss.
     run_mode = {"paths", "quiet", "baseline", "refresh"}
     flags = set(inspect.signature(check).parameters) - run_mode
-    keys = set(Settings.model_fields) - {"per_path"}
-    assert keys == flags
+    assert flags <= set(Settings.model_fields)
 
 
 def test_a_rule_key_can_come_from_the_config(

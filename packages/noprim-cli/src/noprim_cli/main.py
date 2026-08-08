@@ -4,8 +4,7 @@ from tomllib import TOMLDecodeError
 from typing import Annotated, NoReturn
 
 import typer
-from iterpy import Arr
-from pydantic import BaseModel, ValidationError
+from pydantic import RootModel, ValidationError
 
 from noprim_cli.render import (
     Duration,
@@ -17,9 +16,7 @@ from noprim_cli.render import (
     render,
 )
 from noprim_core.baseline import Baseline, BaselineOutcome, apply_baseline
-from noprim_core.config import IgnoredNames
-from noprim_core.rules.code import Selector, Selectors
-from noprim_core.settings import AllowedNames, DeniedNames, PathPatterns, Settings
+from noprim_core.settings import Settings
 from noprim_core.verdict import Verdict
 from noprim_io.baseline import (
     BaselinePath,
@@ -53,37 +50,43 @@ def cli() -> None:
     """Find function parameters annotated with primitive types."""
 
 
-class Overrides(BaseModel):
-    allow: AllowedNames | None
-    deny: DeniedNames | None
-    exclude: PathPatterns | None
-    ignore_names: IgnoredNames | None
-    select: Selectors | None
-    extend_select: Selectors | None
-    ignore: Selectors | None
+class Arguments(RootModel[dict[str, object]]):
+    pass
 
 
-def _overridden(loaded: LoadedSettings, overrides: Overrides) -> LoadedSettings:
-    given = {
-        key: value for key, value in overrides.model_dump().items() if value is not None
-    }
-    if len(given) == 0:
-        return loaded
-    return loaded.model_copy(
-        update={
-            "settings": Settings.model_validate(loaded.settings.model_dump() | given)
+class Overrides(RootModel[dict[str, object]]):
+    pass
+
+
+# check's parameters are named after the settings they override, so the settings
+# schema is what picks the config flags out of them: a new key needs a Typer
+# annotation and nothing else.
+def _overrides(arguments: Arguments) -> Overrides:
+    return Overrides(
+        {
+            name: value
+            for name, value in arguments.root.items()
+            if name in Settings.model_fields and value is not None
         }
     )
 
 
-def _selectors(given: list[str] | None) -> Selectors | None:  # noprim: ignore
-    return None if given is None else Selectors(tuple(Arr(given).map(Selector)))
+def _overridden(loaded: LoadedSettings, overrides: Overrides) -> LoadedSettings:
+    if len(overrides.root) == 0:
+        return loaded
+    return loaded.model_copy(
+        update={
+            "settings": Settings.model_validate(
+                loaded.settings.model_dump() | overrides.root
+            )
+        }
+    )
 
 
-def _settings(overrides: Overrides) -> LoadedSettings:
+def _settings(arguments: Arguments) -> LoadedSettings:
     try:
         loaded = load_settings(ExistingDirectory(Path.cwd()))
-        return _overridden(loaded, overrides)
+        return _overridden(loaded, _overrides(arguments))
     except (OSError, TOMLDecodeError, ValidationError) as error:
         raise ConfigError(str(error)) from error
 
@@ -152,21 +155,8 @@ def check(  # noqa: PLR0913, PLR0917
 ) -> None:
     if refresh and baseline is None:
         raise WriteBaselineWithoutPathError
-    settings = _settings(
-        Overrides(
-            allow=AllowedNames(tuple(allow)) if allow is not None else None,
-            deny=DeniedNames(tuple(deny)) if deny is not None else None,
-            exclude=PathPatterns(tuple(exclude)) if exclude is not None else None,
-            ignore_names=(
-                IgnoredNames(frozenset(ignore_names))
-                if ignore_names is not None
-                else None
-            ),
-            select=_selectors(select),
-            extend_select=_selectors(extend_select),
-            ignore=_selectors(ignore),
-        )
-    )
+    # Nothing is bound yet, so locals() is exactly the parameters above.
+    settings = _settings(Arguments(locals()))
 
     targets = tuple(paths) if paths is not None else (Path.cwd(),)
     missing = [path for path in targets if not path.exists()]
