@@ -15,6 +15,9 @@ fileGroups:
   workflows:
     - '.github/workflows/*.yml'
     - '.github/dependabot.yml'
+  templates:
+    - 'docs-templates/**/*'
+    - 'docs-support/**/*'
 
 tasks:
   # Boundaries span packages, so this cannot live in a single package.
@@ -80,9 +83,87 @@ tasks:
       - '@group(sources)'
       - '@group(manifests)'
 
-  # Dogfooding: every rule on, no --allow flags.
+  # Dogfooding: every rule on, no --allow flags. The doc fixtures are deliberately
+  # full of violations, so they are the one thing not held to it.
   noprim:
-    script: 'uv run noprim check --preset all .'
+    script: 'uv run noprim check --preset all --exclude "docs-support/fixtures/**" .'
     inputs:
       - '@group(sources)'
       - '@group(manifests)'
+
+  # docs-support sits outside packages/*, so the per-package tasks never reach it.
+  lint:
+    script: 'uv run ruff check docs-support'
+    inputs:
+      - '@group(templates)'
+      - 'ruff.toml'
+
+  lint-fix:
+    script: 'uv run ruff check --fix docs-support'
+    options:
+      runInCI: false
+
+  format-check:
+    script: 'uv run ruff format --check docs-support'
+    inputs:
+      - '@group(templates)'
+      - 'ruff.toml'
+
+  format:
+    script: 'uv run ruff format docs-support'
+    options:
+      runInCI: false
+
+  # The doc guards assert things about the rendered documents, which belong to no
+  # package, so they are the root project's tests.
+  test:
+    script: 'uv run pytest docs-support'
+    inputs:
+      - '@group(templates)'
+      - '@group(sources)'
+      - '@group(manifests)'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'moon.yml'
+      - 'pytest.toml'
+
+  # documator requires Python 3.14 and this package supports 3.13, so it cannot be a
+  # dev dependency; pinned to a rev because an unpinned default branch would let a
+  # change over there break a build over here with no commit to point at.
+  docs:
+    script: 'uvx --from git+https://github.com/MartinBernstorff/documator@36ed6e3ec92bd7d85f51457755b6f78884e03cc0 documator --quiet render docs-templates .'
+    inputs:
+      - '@group(templates)'
+      - '@group(sources)'
+      - '@group(manifests)'
+    # Declared so a cache hit restores them: without this, a hand-edited README is
+    # left in place by a render moon decided it could skip.
+    outputs:
+      - 'README.md'
+      - 'AGENTS.md'
+    options:
+      runInCI: false
+
+  docs-check:
+    script: |
+      set -euo pipefail
+      tmp="$(mktemp -d)"
+      trap 'rm -rf "$tmp"' EXIT
+      uvx --from git+https://github.com/MartinBernstorff/documator@36ed6e3ec92bd7d85f51457755b6f78884e03cc0 \
+        documator --quiet render docs-templates "$tmp"
+      stale=0
+      # Every rendered document, at whatever depth: a template added under a
+      # subdirectory must be checked too, not silently skipped.
+      while IFS= read -r rendered; do
+        diff -u "${rendered#"$tmp"/}" "$rendered" || stale=1
+      done < <(find "$tmp" -type f -name '*.md')
+      test "$stale" -eq 0 || {
+        echo "docs are stale; run: moon run root:docs"
+        exit 1
+      }
+    inputs:
+      - '@group(templates)'
+      - '@group(sources)'
+      - '@group(manifests)'
+      - 'README.md'
+      - 'AGENTS.md'

@@ -14,6 +14,10 @@ pre-commit:
             run: moon run :format
             stage_fixed: true
 
+    - name: docs
+      run: moon run root:docs
+      stage_fixed: true
+
     - name: typecheck
       run: moon run :typecheck
 

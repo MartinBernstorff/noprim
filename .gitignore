@@ -235,3 +235,6 @@ __marimo__/
 # moon
 .moon/cache
 .moon/docker
+
+# documator writes this beside the docs it renders.
+.documator-manifest.json

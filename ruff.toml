@@ -41,6 +41,10 @@ ignore = ["E501"]
 [lint.per-file-ignores]
 "packages/noprim-cli/src/**" = ["FBT001", "FBT002"]
 "**/test_*.py" = ["PLR2004"]
+# Loose scripts whose only contract is their stdout, and fixtures that exist to be
+# reported on rather than to be good code.
+"docs-support/**" = ["INP001"]
+"docs-support/fixtures/**" = ["ARG001", "T201"]
 
 [lint.isort]
 known-first-party = ["noprim_types", "noprim_core", "noprim_io", "noprim_cli"]

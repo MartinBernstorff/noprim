@@ -2,13 +2,15 @@ from typing import override
 
 from noprim_core.config import CheckConfig
 from noprim_core.rules.code import RuleCode
-from noprim_core.rules.rule import Rule
+from noprim_core.rules.rule import Rule, RuleExample, RuleName
 from noprim_core.site import Site, Surface
 from noprim_types.verdict import Verdict
 
 
 class PrimitiveParameter(Rule):
     code = RuleCode("NOPRIM001")
+    name = RuleName("primitive-parameter")
+    example = RuleExample("def send(to: str) -> None")
     on_by_default = Verdict(root=True)
 
     @override
