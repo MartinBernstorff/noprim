@@ -69,11 +69,18 @@ class TopTypes(RootModel[frozenset[str]]):
         return cls(frozenset({"Any", "object"}))
 
 
+class IgnoredNames(RootModel[frozenset[str]]):
+    def contains(self, name: "Qualname") -> "Verdict":
+        return Verdict(name.root in self.root)
+
+
 class CheckConfig(BaseModel):
     denied: DeniedTypes = Field(default_factory=DeniedTypes.default)
+    check_predicates: Verdict = Verdict(root=False)
+    ignored_names: IgnoredNames = IgnoredNames(frozenset())
     # A top type says the type is unknown, not that it is too narrow, so it is a
     # different smell from primitive obsession and is opted into on its own.
-    top_types: Verdict = Field(default_factory=lambda: Verdict(root=False))
+    top_types: Verdict = Verdict(root=False)
 
     def all_denied(self) -> DeniedTypes:
         if not self.top_types.root:
@@ -100,7 +107,7 @@ class ColumnNumber(RootModel[int]):
 
 
 class TypeNames(RootModel[frozenset[str]]):
-    def any_denied(self, denied: DeniedTypes) -> "Verdict":
+    def any_denied(self, denied: DeniedTypes) -> Verdict:
         return Verdict(len(self.root & denied.root) > 0)
 
 
@@ -112,6 +119,7 @@ class Site(BaseModel):
     annotation: AnnotationText
     names: TypeNames
     pytest_owned: Verdict
+    predicate_return: Verdict
 
 
 class Violation(BaseModel):
@@ -198,6 +206,19 @@ def _annotation_names(annotation: ast.expr) -> TypeNames:
             return TypeNames(frozenset())
 
 
+def _annotates_bool(annotation: ast.expr) -> Verdict:
+    match annotation:
+        case ast.Name(id="bool") | ast.Attribute(attr="bool"):
+            return Verdict(root=True)
+        case ast.Constant(value=str() as text):
+            try:
+                return _annotates_bool(ast.parse(text, mode="eval").body)
+            except SyntaxError:
+                return Verdict(root=False)
+        case _:
+            return Verdict(root=False)
+
+
 def _site(
     annotation: ast.expr, surface: Surface, qualname: Qualname, pytest_owned: Verdict
 ) -> Site:
@@ -209,6 +230,9 @@ def _site(
         annotation=AnnotationText(ast.unparse(annotation)),
         names=_annotation_names(annotation),
         pytest_owned=pytest_owned,
+        predicate_return=Verdict(
+            surface == Surface.RETURN and _annotates_bool(annotation).root
+        ),
     )
 
 
@@ -341,6 +365,13 @@ def _sites_in(body: list[ast.stmt], scope: Qualname) -> Arr[Site]:
     )
 
 
+def _named_as_ignored(site: Site, ignored: IgnoredNames) -> Verdict:
+    # A return type carries the function's name, not a symbol name of its own.
+    return Verdict(
+        site.surface != Surface.RETURN and bool(ignored.contains(site.qualname.leaf()))
+    )
+
+
 def check_source(
     source: SourceCode, filename: Filename, config: CheckConfig
 ) -> Arr[Violation]:
@@ -353,6 +384,12 @@ def check_source(
         _sites_in(tree.body, Qualname(""))
         .filter(lambda site: bool(site.names.any_denied(config.all_denied())))
         .filter(lambda site: not bool(bool(exempt) and site.pytest_owned))
+        .filter(
+            lambda site: (
+                bool(config.check_predicates) or not bool(site.predicate_return)
+            )
+        )
+        .filter(lambda site: not bool(_named_as_ignored(site, config.ignored_names)))
         .filter(lambda site: site.line.root not in ignored.root)
         .map(
             lambda site: Violation(

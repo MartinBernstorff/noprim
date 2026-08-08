@@ -18,14 +18,14 @@ def _plain(output: DisplayText) -> DisplayText:
 def test_reports_each_surface_ruff_style(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
     _ = target.write_text(
-        "def greet(user_id: str) -> bool: ...\nclass Thing:\n    email: str\n"
+        "def greet(user_id: str) -> int: ...\nclass Thing:\n    email: str\n"
     )
 
     result = runner.invoke(app, ["check", str(target)])
 
     assert result.stdout.splitlines() == [
         f'{target}:1:20: parameter "user_id" is annotated "str"',
-        f'{target}:1:28: return type is annotated "bool"',
+        f'{target}:1:28: return type is annotated "int"',
         f'{target}:3:12: attribute "email" is annotated "str"',
     ]
 
@@ -208,6 +208,30 @@ def test_deny_of_a_top_type_reports_it_without_the_flag(tmp_path: Path) -> None:
     assert result.exit_code == 1
     assert 'parameter "x" is annotated "Any"' in result.stdout
     assert 'parameter "y"' not in result.stdout
+
+
+def test_predicates_are_skipped_until_asked_for(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def is_ready(x: Name) -> bool: ...\n")
+
+    skipped = runner.invoke(app, ["check", str(target)])
+    checked = runner.invoke(app, ["check", "--check-predicates", str(target)])
+
+    assert skipped.stdout.splitlines() == []
+    assert checked.stdout.splitlines() == [
+        f'{target}:1:26: return type is annotated "bool"'
+    ]
+
+
+def test_ignore_names_skips_symbols_by_name(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(size: int, **kwargs: str) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", "--ignore-names", "kwargs", str(target)])
+
+    assert result.stdout.splitlines() == [
+        f'{target}:1:13: parameter "size" is annotated "int"'
+    ]
 
 
 def test_deny_adds_type_to_deny_list(tmp_path: Path) -> None:

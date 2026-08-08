@@ -5,6 +5,7 @@ from noprim_core.checker import (
     CheckConfig,
     DeniedTypes,
     Filename,
+    IgnoredNames,
     SourceCode,
     Surface,
     Verdict,
@@ -29,7 +30,7 @@ def test_flags_primitive_parameter() -> None:
 
 
 def test_locates_violations_at_the_annotation() -> None:
-    violations = _check(SourceCode("def greet(name: str) -> bool: ...\n"))
+    violations = _check(SourceCode("def greet(name: str) -> int: ...\n"))
     assert [(v.line.root, v.column.root) for v in violations] == [(1, 17), (1, 25)]
 
 
@@ -43,15 +44,44 @@ def test_flags_keyword_only_and_async() -> None:
 
 
 def test_flags_primitive_return() -> None:
-    violations = _check(SourceCode("def f(x: Name) -> bool: ...\n"))
+    violations = _check(SourceCode("def f(x: Name) -> str: ...\n"))
     assert [(v.qualname.root, v.surface, v.annotation.root) for v in violations] == [
-        ("f", Surface.RETURN, "bool")
+        ("f", Surface.RETURN, "str")
+    ]
+
+
+@pytest.mark.parametrize("annotation", ["bool", "builtins.bool", '"bool"'])
+def test_exempts_predicate_return(annotation: str) -> None:
+    source = f"def is_ready(x: Name) -> {annotation}: ...\n"
+    assert list(_check(SourceCode(source))) == []
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("def f(flag: bool) -> None: ...\n", ["f.flag"]),
+        ("def f(x: Name) -> list[bool]: ...\n", ["f"]),
+        ("def f(x: Name) -> bool | None: ...\n", ["f"]),
+        ("class Thing:\n    ready: bool\n", ["Thing.ready"]),
+    ],
+)
+def test_predicate_exemption_covers_only_bool_returns(
+    source: str, expected: list[str]
+) -> None:
+    assert [v.qualname.root for v in _check(SourceCode(source))] == expected
+
+
+def test_checking_predicates_reports_bool_returns() -> None:
+    config = CheckConfig(check_predicates=Verdict(root=True))
+    violations = _check(SourceCode("def is_ready(x: Name) -> bool: ...\n"), config)
+    assert [(v.qualname.root, v.surface) for v in violations] == [
+        ("is_ready", Surface.RETURN)
     ]
 
 
 def test_qualifies_method_surfaces_with_their_class() -> None:
     violations = _check(
-        SourceCode("class Thing:\n    def m(self, y: int) -> bool: ...\n")
+        SourceCode("class Thing:\n    def m(self, y: int) -> str: ...\n")
     )
     assert [(v.qualname.root, v.surface) for v in violations] == [
         ("Thing.m.y", Surface.PARAMETER),
@@ -333,6 +363,23 @@ def test_uses_configured_deny_list() -> None:
     config = CheckConfig(denied=DeniedTypes(frozenset({"Name"})))
     violations = _check(SourceCode("def f(x: Name, y: str) -> None: ...\n"), config)
     assert [v.qualname.root for v in violations] == ["f.x"]
+
+
+def test_ignores_configured_symbol_names() -> None:
+    config = CheckConfig(ignored_names=IgnoredNames(frozenset({"kwargs"})))
+    violations = _check(
+        SourceCode("def f(x: str, **kwargs: str) -> None: ...\n"), config
+    )
+    assert [v.qualname.root for v in violations] == ["f.x"]
+
+
+def test_ignored_names_leave_return_types_alone() -> None:
+    config = CheckConfig(ignored_names=IgnoredNames(frozenset({"size", "f"})))
+    violations = _check(
+        SourceCode("class Thing:\n    size: int\n\ndef f(y: Name) -> str: ...\n"),
+        config,
+    )
+    assert [(v.qualname.root, v.surface) for v in violations] == [("f", Surface.RETURN)]
 
 
 @pytest.mark.parametrize(

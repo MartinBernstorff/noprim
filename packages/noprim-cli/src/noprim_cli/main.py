@@ -11,6 +11,7 @@ from noprim_core import (
     ColumnNumber,
     DeniedTypes,
     Filename,
+    IgnoredNames,
     LineNumber,
     Surface,
     TopTypes,
@@ -169,7 +170,11 @@ def _diagnostics(report: CheckReport) -> Arr[DisplayText]:
 
 
 def _resolve_config(
-    allow: AllowedNames, deny: DeniedNames, top_types: Verdict
+    allow: AllowedNames,
+    deny: DeniedNames,
+    check_predicates: Verdict,
+    ignore_names: IgnoredNames,
+    top_types: Verdict,
 ) -> CheckConfig:
     default = DeniedTypes.default().root
     # "" is the sentinel for unresolvable annotations, so denying it matches everything.
@@ -186,6 +191,8 @@ def _resolve_config(
         raise NotOnDenyListError(AllowedNames(tuple(unknown)))
     return CheckConfig(
         denied=DeniedTypes((default - set(allow.root)) | set(deny.root)),
+        check_predicates=check_predicates,
+        ignored_names=ignore_names,
         top_types=top_types,
     )
 
@@ -193,7 +200,7 @@ def _resolve_config(
 # Typer derives the command-line interface from these annotations: a RootModel here
 # would be parsed as one opaque argument, losing the flag names and the arity.
 @app.command()
-def check(
+def check(  # noqa: PLR0913, PLR0917
     paths: Annotated[  # noprim: ignore
         list[Path] | None, typer.Argument(help="Files or directories to check.")
     ] = None,
@@ -205,10 +212,24 @@ def check(
         list[str] | None,
         typer.Option("--deny", help="Add a type to the deny-list. Repeatable."),
     ] = None,
+    ignore_names: Annotated[  # noprim: ignore
+        list[str] | None,
+        typer.Option(
+            "--ignore-names",
+            help="Skip parameters and attributes with this name. Repeatable.",
+        ),
+    ] = None,
     exclude: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option("--exclude", help="Glob to skip while walking. Repeatable."),
     ] = None,
+    check_predicates: Annotated[  # noprim: ignore
+        bool,
+        typer.Option(
+            "--check-predicates",
+            help="Report functions returning bool instead of skipping them.",
+        ),
+    ] = False,
     top_types: Annotated[  # noprim: ignore
         bool,
         typer.Option("--top-types", help="Also report Any and object. Off by default."),
@@ -220,6 +241,8 @@ def check(
     source = _resolve_config(
         AllowedNames(tuple(allow if allow is not None else ())),
         DeniedNames(tuple(deny if deny is not None else ())),
+        Verdict(check_predicates),
+        IgnoredNames(frozenset(ignore_names if ignore_names is not None else ())),
         Verdict(top_types),
     )
 
