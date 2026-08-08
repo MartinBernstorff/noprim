@@ -50,6 +50,19 @@ def test_quiet_hides_the_summary_but_not_the_violations(tmp_path: Path) -> None:
     ]
 
 
+def test_the_summary_counts_suppressions_a_baseline_had_no_part_in(
+    tmp_path: Path,
+) -> None:
+    _ = (tmp_path / "bad.py").write_text(
+        "def f(a: int) -> None: ...  # noprim: ignore\n"
+    )
+
+    result = runner.invoke(app, ["check", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert "no violations, 1 suppressed" in result.stderr
+
+
 def test_exits_zero_when_clean(tmp_path: Path) -> None:
     _ = (tmp_path / "good.py").write_text("def greet(name: Name) -> None: ...\n")
 
@@ -364,7 +377,7 @@ def test_reports_only_violations_the_baseline_does_not_cover(tmp_path: Path) -> 
     assert result.stdout.splitlines() == [
         f'{target}:2:10: NOPRIM001 parameter "b" is annotated "str"'
     ]
-    assert "found 1 violation, 1 suppressed by baseline" in result.stderr
+    assert "found 1 violation, 1 suppressed" in result.stderr
 
 
 def test_keeps_suppressing_after_the_violation_moves(tmp_path: Path) -> None:

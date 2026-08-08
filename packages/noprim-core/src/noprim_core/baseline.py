@@ -4,6 +4,7 @@ from pydantic import BaseModel, RootModel
 from noprim_core.annotations import AnnotationText
 from noprim_core.rules.code import RuleCode
 from noprim_core.site import Filename, Qualname, Surface
+from noprim_core.suppression import SuppressedViolation, SuppressionReason
 from noprim_core.violation import Violation
 
 
@@ -51,7 +52,7 @@ class PrunableFiles(RootModel[frozenset[Filename]]):
 
 class BaselineOutcome(BaseModel):
     reported: tuple[Violation, ...]
-    suppressed: tuple[Violation, ...]
+    suppressed: tuple[SuppressedViolation, ...]
     stale: tuple[BaselineKey, ...]
     regenerated: Baseline
 
@@ -72,7 +73,9 @@ def apply_baseline(
         ),
         suppressed=tuple(
             entries.filter(lambda entry: entry.key in baseline.root).map(
-                lambda entry: entry.violation
+                lambda entry: SuppressedViolation(
+                    violation=entry.violation, reason=SuppressionReason.BASELINE
+                )
             )
         ),
         stale=tuple(sorted(baseline.root - found - untouched)),

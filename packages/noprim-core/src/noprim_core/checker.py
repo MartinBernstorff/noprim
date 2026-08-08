@@ -1,47 +1,31 @@
 import ast
-import io
 import re
-import tokenize
 
 from iterpy import Arr
 from pydantic import RootModel
 
 from noprim_core.annotations import AnnotationText, SymbolName, head_name, names_in
-from noprim_core.config import CheckConfig, IgnoredNames
+from noprim_core.config import CheckConfig
 from noprim_core.rules.registry import RULES
 from noprim_core.rules.rule import Rule
 from noprim_core.site import (
     ColumnNumber,
     Filename,
     LineNumber,
+    Owner,
     Qualname,
     Site,
     Surface,
 )
+from noprim_core.source import SourceCode
+from noprim_core.suppression import (
+    IgnoredLines,
+    PytestOwned,
+    SuppressionOutcome,
+    Suppressions,
+)
 from noprim_core.verdict import Verdict
 from noprim_core.violation import Violation
-
-
-class SourceCode(RootModel[str]):
-    pass
-
-
-class IgnoredLines(RootModel[frozenset[int]]):
-    @classmethod
-    def parse(cls, source: SourceCode) -> "IgnoredLines":
-        # Anchored to end-of-line so `# noprim: ignore[NOPRIM002]` stays free for later.
-        # Searched, not matched, so it can stack after another tool's suppression.
-        pattern = re.compile(r"#\s*noprim:\s*ignore\s*$")
-        tokens = tokenize.generate_tokens(io.StringIO(source.root).readline)
-        return cls(
-            frozenset(
-                Arr(tokens)
-                .filter(lambda token: token.type == tokenize.COMMENT)
-                .filter(lambda token: pattern.search(token.string) is not None)
-                .map(lambda token: token.start[0])
-            )
-        )
-
 
 Function = ast.FunctionDef | ast.AsyncFunctionDef
 
@@ -50,7 +34,9 @@ def _mentions(expressions: Arr[ast.expr], symbol: SymbolName) -> Verdict:
     return Verdict(expressions.filter(lambda e: head_name(e) == symbol).to_list() != [])
 
 
-def _site(annotation: ast.expr, surface: Surface, qualname: Qualname) -> Site:
+def _site(
+    annotation: ast.expr, surface: Surface, qualname: Qualname, owner: Owner
+) -> Site:
     return Site(
         line=LineNumber(annotation.lineno),
         column=ColumnNumber(annotation.col_offset + 1),
@@ -58,6 +44,7 @@ def _site(annotation: ast.expr, surface: Surface, qualname: Qualname) -> Site:
         qualname=qualname,
         annotation=AnnotationText(ast.unparse(annotation)),
         names=names_in(annotation),
+        owner=owner,
     )
 
 
@@ -109,16 +96,24 @@ def _subclasses_root_model(class_def: ast.ClassDef) -> Verdict:
     return _mentions(Arr(class_def.bases), SymbolName("RootModel"))
 
 
+def _parameter_owner(function: Function, in_pytest_module: Verdict) -> Owner:
+    if in_pytest_module.root and _pytest_owns_parameters(function).root:
+        return Owner.PYTEST
+    return Owner.AUTHOR
+
+
 def _parameter_sites(
     function: Function, qualname: Qualname, in_pytest_module: Verdict
 ) -> Arr[Site]:
-    # pytest dictates the signature of tests and fixtures, so their parameters aren't
-    # the author's to choose.
-    if in_pytest_module.root and _pytest_owns_parameters(function).root:
-        return Arr([])
+    owner = _parameter_owner(function, in_pytest_module)
     return Arr(
         [
-            _site(arg.annotation, Surface.PARAMETER, qualname.child(Qualname(arg.arg)))
+            _site(
+                arg.annotation,
+                Surface.PARAMETER,
+                qualname.child(Qualname(arg.arg)),
+                owner,
+            )
             for arg in _parameters(function)
             if arg.annotation is not None
         ]
@@ -140,7 +135,7 @@ def _function_sites(
         [
             *_parameter_sites(function, qualname, in_pytest_module),
             *(
-                [_site(returns, Surface.RETURN, qualname)]
+                [_site(returns, Surface.RETURN, qualname, Owner.AUTHOR)]
                 if returns is not None
                 else []
             ),
@@ -163,6 +158,7 @@ def _class_sites(
                     node.annotation,
                     Surface.ATTRIBUTE,
                     qualname.child(Qualname(ast.unparse(node.target))),
+                    Owner.AUTHOR,
                 )
                 for node in class_def.body
                 if isinstance(node, ast.AnnAssign)
@@ -202,13 +198,6 @@ def _sites_in(
     )
 
 
-def _named_as_ignored(site: Site, ignored: IgnoredNames) -> Verdict:
-    # A return type carries the function's name, not a symbol name of its own.
-    return Verdict(
-        site.surface != Surface.RETURN and bool(ignored.contains(site.qualname.leaf()))
-    )
-
-
 def _violations_at(
     site: Site, filename: Filename, rules: Arr[Rule], config: CheckConfig
 ) -> Arr[Violation]:
@@ -225,16 +214,30 @@ def _violations_at(
     )
 
 
+def _suppressions(
+    source: SourceCode, sites: Arr[Site], config: CheckConfig
+) -> Suppressions:
+    return Suppressions(
+        lines=IgnoredLines.parse(source),
+        names=config.ignored_names,
+        pytest_owned=PytestOwned(
+            frozenset(
+                sites.filter(lambda site: site.owner == Owner.PYTEST).map(
+                    lambda site: site.qualname
+                )
+            )
+        ),
+    )
+
+
 def check_source(
     source: SourceCode, filename: Filename, config: CheckConfig
-) -> Arr[Violation]:
+) -> SuppressionOutcome:
     tree = ast.parse(source.root, filename=filename.root)
-    ignored = IgnoredLines.parse(source)
     enabled = Arr(RULES).filter(lambda rule: bool(config.selection.contains(rule.code)))
-    return (
-        _sites_in(tree.body, Qualname(""), _is_pytest_module(filename))
-        .filter(lambda site: not bool(_named_as_ignored(site, config.ignored_names)))
-        .filter(lambda site: site.line.root not in ignored.root)
-        .map(lambda site: _violations_at(site, filename, enabled, config))
-        .flatten()
+    sites = _sites_in(tree.body, Qualname(""), _is_pytest_module(filename))
+    return _suppressions(source, sites, config).apply(
+        sites.map(
+            lambda site: _violations_at(site, filename, enabled, config)
+        ).flatten()
     )
