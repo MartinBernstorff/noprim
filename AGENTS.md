@@ -75,10 +75,17 @@ top of the top-level lists into a `CheckConfig` — is pure logic over a relativ
 so it lives in core alongside `pathspec`. `noprim_io.settings` does the I/O half:
 walking up for the file and reading it through `pydantic-settings`' TOML sources.
 
-Two things keep this honest, and both will fail loudly if you break them:
+An override carries `allow`, `deny` and `ignore`. `ignore` names rule codes and only
+ever *subtracts* — there is deliberately no per-path `select`, so the top-level
+selection stays the ceiling and `--select NOPRIM001` still means only `NOPRIM001` ran.
+It deselects rather than suppresses: the rule never fires, so nothing reaches
+`Suppressions` and nothing is counted, exactly like the top-level `ignore`.
+
+Three things keep this honest, and all will fail loudly if you break them:
 
 - **A flag overrides the config key with its own name.** `check` hands its parameters to `_overrides`, which keeps the ones `Settings.model_fields` knows and lets pydantic coerce the raw `list[str]` into the field's type — so a new setting needs a Typer annotation and nothing else. The name is the wiring, and `test_every_flag_that_is_not_run_mode_names_a_config_key` is what stops a mistyped parameter from becoming a flag that silently does nothing.
 - **`LoadedSettings.anchor` is `None` when no config was found.** Patterns then have no directory to hang off, and the walk falls back to the target's repo root — which is what makes `--exclude` behave the same with and without a config file.
+- **`_coherent` is the one seam that locates a per-path complaint.** Pydantic attributes an after-validator error to `Settings`, not to the entry, so every complaint from an override is re-raised through `PerPathError` carrying the block's own patterns. Validate a new override key inside `_coherent` and it is located for free; validate it anywhere else and the user gets a message with no way to find the block.
 
 ## Python
 

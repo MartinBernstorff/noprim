@@ -70,7 +70,7 @@ def _matches_nothing(selector: Selector) -> Verdict:
     return Verdict(len(_selected(Selectors((selector,))).root) == 0)
 
 
-def _validated(selectors: Selectors) -> None:
+def validate_selectors(selectors: Selectors) -> None:
     # A selector that names no rule is a typo, and silently doing nothing is the
     # failure this validation exists to prevent.
     unknown = Arr(selectors.root).filter(lambda s: bool(_matches_nothing(s))).to_list()
@@ -81,9 +81,9 @@ def _validated(selectors: Selectors) -> None:
 def selection(
     select: Selectors | None, extend: Selectors, ignore: Selectors
 ) -> Selection:
-    _validated(extend)
-    _validated(ignore)
+    validate_selectors(extend)
+    validate_selectors(ignore)
     if select is not None:
-        _validated(select)
+        validate_selectors(select)
     chosen = default_selection() if select is None else _selected(select)
     return Selection((chosen.root | _selected(extend).root) - _selected(ignore).root)

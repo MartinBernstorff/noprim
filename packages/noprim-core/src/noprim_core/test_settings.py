@@ -9,9 +9,11 @@ from noprim_core.settings import (
     AllowedNames,
     DeniedNames,
     EmptyNameError,
+    Message,
     NotOnDenyListError,
     PathOverride,
     PathPatterns,
+    PerPathError,
     RelativePath,
     Settings,
 )
@@ -23,7 +25,14 @@ _ANY = RelativePath("a.py")
 def _raised(error: ValidationError, expected: type[ValueError]) -> Verdict:
     # pyrefly: ignore[not-required-key-access]
     cause: object = error.errors()[0]["ctx"]["error"]
+    if isinstance(cause, PerPathError):
+        cause = cause.__cause__
     return Verdict(isinstance(cause, expected))
+
+
+def _complaint(error: ValidationError) -> Message:
+    # pyrefly: ignore[not-required-key-access]
+    return Message(str(error.errors()[0]["ctx"]["error"]))
 
 
 def test_defaults_resolve_to_the_default_deny_list() -> None:
@@ -84,6 +93,12 @@ def test_a_bare_pattern_matches_at_any_depth() -> None:
     assert "str" not in settings.resolve(RelativePath("a/b/test_c.py")).denied.root
 
 
+def test_a_leading_bang_re_includes_a_pattern() -> None:
+    settings = Settings(per_path=(_lenient_on(PathPatterns(("**/*.py", "!src/**"))),))
+    assert "str" not in settings.resolve(RelativePath("legacy/a.py")).denied.root
+    assert "str" in settings.resolve(RelativePath("src/a.py")).denied.root
+
+
 def test_every_matching_override_contributes() -> None:
     settings = Settings(
         per_path=(
@@ -110,6 +125,71 @@ def test_an_override_can_relax_a_top_level_deny() -> None:
     assert "Enum" in settings.resolve(RelativePath("domain/a.py")).denied.root
 
 
+def test_an_override_can_ignore_a_rule_for_the_paths_it_matches() -> None:
+    settings = Settings(
+        per_path=(
+            PathOverride(
+                paths=PathPatterns(("test_*.py",)),
+                ignore=Selectors((Selector("NOPRIM002"),)),
+            ),
+        )
+    )
+    ignored = settings.resolve(RelativePath("test_a.py")).selection
+    assert not ignored.contains(RuleCode("NOPRIM002")).root
+    assert (
+        settings.resolve(RelativePath("a.py"))
+        .selection.contains(RuleCode("NOPRIM002"))
+        .root
+    )
+
+
+def test_every_matching_override_contributes_its_ignores() -> None:
+    settings = Settings(
+        per_path=(
+            PathOverride(
+                paths=PathPatterns(("domain/**",)),
+                ignore=Selectors((Selector("NOPRIM002"),)),
+            ),
+            PathOverride(
+                paths=PathPatterns(("**/*.py",)),
+                ignore=Selectors((Selector("NOPRIM003"),)),
+            ),
+        )
+    )
+    running = settings.resolve(RelativePath("domain/a.py")).selection.root
+    assert {RuleCode("NOPRIM002"), RuleCode("NOPRIM003")}.isdisjoint(running)
+
+
+def test_an_override_may_ignore_a_rule_the_top_level_did_not_select() -> None:
+    settings = Settings(
+        select=Selectors((Selector("NOPRIM001"),)),
+        per_path=(
+            PathOverride(
+                paths=PathPatterns(("legacy/**",)),
+                ignore=Selectors((Selector("NOPRIM002"),)),
+            ),
+        ),
+    )
+    assert (
+        settings.resolve(RelativePath("legacy/a.py"))
+        .selection.contains(RuleCode("NOPRIM001"))
+        .root
+    )
+
+
+def test_an_override_ignoring_a_selector_that_names_no_rule_is_rejected() -> None:
+    with pytest.raises(ValidationError) as caught:
+        _ = Settings(
+            per_path=(
+                PathOverride(
+                    paths=PathPatterns(("legacy/**",)),
+                    ignore=Selectors((Selector("NOPRIM999"),)),
+                ),
+            )
+        )
+    assert _raised(caught.value, UnknownSelectorError).root
+
+
 def test_an_override_allowing_a_name_nothing_denies_is_rejected() -> None:
     with pytest.raises(ValidationError) as caught:
         _ = Settings(
@@ -120,6 +200,19 @@ def test_an_override_allowing_a_name_nothing_denies_is_rejected() -> None:
             )
         )
     assert _raised(caught.value, NotOnDenyListError).root
+
+
+def test_a_per_path_complaint_names_the_patterns_it_came_from() -> None:
+    with pytest.raises(ValidationError) as caught:
+        _ = Settings(
+            per_path=(
+                PathOverride(
+                    paths=PathPatterns(("legacy/**", "vendor/**")),
+                    allow=AllowedNames(("Enum",)),
+                ),
+            )
+        )
+    assert "legacy/**, vendor/**" in _complaint(caught.value).root
 
 
 def test_an_override_may_allow_a_name_the_top_level_denied() -> None:

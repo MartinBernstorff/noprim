@@ -149,6 +149,17 @@ _LENIENT_TEST_INFRA = ConfigText(
     '[[per-path]]\npaths = ["test_infra/**"]\nallow = ["str"]\n'
 )
 _EXCLUDE_TEST_INFRA = ConfigText('exclude = ["test_infra/**"]\n')
+_IGNORE_RULE_IN_TEST_INFRA = ConfigText(
+    '[[per-path]]\npaths = ["test_infra/**"]\nignore = ["NOPRIM001"]\n'
+)
+
+
+def test_an_override_ignores_a_rule_only_for_the_paths_it_matches(
+    tmp_path: Path,
+) -> None:
+    config = _tree(ExistingDirectory(tmp_path), _IGNORE_RULE_IN_TEST_INFRA)
+
+    assert _violations(CheckPaths((tmp_path,)), config) == LeafNames(("x",))
 
 
 def test_an_override_relaxes_only_the_paths_it_matches(tmp_path: Path) -> None:

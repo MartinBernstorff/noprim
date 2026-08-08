@@ -145,8 +145,8 @@ rather than adding to it — `--deny Enum` ignores whatever `deny` the file set.
 ### Per-path overrides
 
 One deny-list for a whole codebase is the wrong shape: the domain deserves stricter
-rules than the Django layer. `per-path` entries adjust the list for the paths they
-match.
+rules than the Django layer. `per-path` entries adjust both the deny-list and the rules
+that run for the paths they match.
 
 ```toml
 [[per-path]]
@@ -156,20 +156,47 @@ deny = ["Enum", "Flag"]
 [[per-path]]
 paths = ["test_infra/**", "django_app/**"]
 allow = ["str", "int", "bool"]
+ignore = ["NOPRIM002"]
 ```
 
-Overrides carry `allow` and `deny` only. The remaining keys are whole-run settings:
-`exclude` decides which files are walked at all, and `select`, `extend-select` and
-`ignore` choose rules rather than deny-lists.
+Overrides carry `allow`, `deny` and `ignore`. `exclude` is not among them — it decides
+which files are walked at all, before any path has a config.
 
 Patterns use gitignore syntax, anchored at the directory holding the config, so
-`test_*.py` matches at any depth and `domain/**` does not. Every entry that matches a
-file contributes — there is no first-match or most-specific rule — and each is applied
-on top of the top-level lists, so an override can relax something the top level denied.
+`test_*.py` matches at any depth and `domain/**` does not. A leading `!` re-includes, as
+in a `.gitignore`, so `paths = ["**/*.py", "!src/**"]` reads "everything but `src`".
+Every entry that matches a file contributes — there is no first-match or most-specific
+rule — and each is applied on top of the top-level lists, so an override can relax
+something the top level denied.
 
-Allowing a name that nothing denies is an error, as is allowing and denying the same
-name for the same path, as is a key noprim does not recognise. A config that quietly
-does nothing is the failure this feature exists to prevent.
+### Ignoring a rule for some paths
+
+An override's `ignore` takes rule codes, exactly like the top-level key, and subtracts
+them for the paths it matches. It only ever subtracts: there is no per-path `select` or
+`extend-select`, so the rules named at the top level stay the ceiling on what any file
+is checked for, and `--select NOPRIM001` still means only `NOPRIM001` ran. To check a
+rule in one directory alone, select it globally and ignore it everywhere else.
+
+A per-path ignore deselects rather than suppresses. The rule never runs, so nothing is
+counted in the summary the way a `# noprim: ignore` comment is — the same as the
+top-level `ignore`. If a baseline recorded violations for a code you then ignore for
+those paths, its entries stop matching, are reported as stale on stderr, and are pruned
+the next time the baseline is written.
+
+Passing `--ignore` on the command line replaces the top-level `ignore` key only;
+per-path entries still apply on top of it.
+
+A selector that names no rule at all is an error, as is allowing a name that nothing
+denies, allowing and denying the same name for the same path, or a key noprim does not
+recognise. A config that quietly does nothing is the failure this feature exists to
+prevent. Ignoring a code that is not currently selected is *not* an error, though —
+deselecting a rule globally should not break an unrelated override that mentions it.
+
+Complaints name the block they came from by its patterns:
+
+```
+allow of a name that is not on the deny-list: Enum (per-path entry for legacy/**)
+```
 
 ## Dogfooding
 
