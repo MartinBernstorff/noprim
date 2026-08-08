@@ -22,3 +22,20 @@ def test_rejects_a_path_held_by_a_file(tmp_path: Path) -> None:
 
     with pytest.raises(ValidationError, match="is not a directory"):
         _ = EnsuredDir(occupied)
+
+
+def test_rejects_a_dangling_symlink(tmp_path: Path) -> None:
+    link = tmp_path / "link"
+    link.symlink_to(tmp_path / "gone")
+
+    with pytest.raises(ValidationError, match="is not a directory"):
+        _ = EnsuredDir(link)
+
+
+def test_accepts_a_symlink_to_a_directory(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(target)
+
+    assert EnsuredDir(link).root.is_dir()

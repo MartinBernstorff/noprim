@@ -303,6 +303,7 @@ for the cases pydantic does not already cover.
 ```python
 from noprim_types import EnsuredDir, NonBlankString, Verdict
 
+
 def write_report(into: EnsuredDir, title: NonBlankString) -> Verdict: ...
 ```
 

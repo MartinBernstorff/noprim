@@ -2,7 +2,7 @@ from pydantic import ConfigDict, RootModel
 
 
 class TypeName(RootModel[str]):
-    # Keys a replacement table.
+    # Hashed as a replacement table key.
     model_config = ConfigDict(frozen=True)
 
 
