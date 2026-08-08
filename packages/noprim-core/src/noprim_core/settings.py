@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Self
 
 import pathspec
@@ -99,8 +100,9 @@ def _alias(name: str) -> str:  # noprim: ignore
 _SCHEMA = ConfigDict(extra="forbid", populate_by_name=True, alias_generator=_alias)
 
 
-# ignore-names predates the split and stays the way to speak about both surfaces.
-class IgnoredNames(BaseModel):
+# The keys that name symbols rather than types, shared by the top level and by an
+# override. ignore-names predates the split and stays the way to say both at once.
+class NameKeys(BaseModel):
     model_config = _SCHEMA
 
     ignore_names: NamePatterns = NamePatterns(())
@@ -114,7 +116,7 @@ class IgnoredNames(BaseModel):
         return self.ignore_names.joined(self.ignore_attribute_names)
 
 
-class PathOverride(IgnoredNames):
+class PathOverride(NameKeys):
     paths: PathPatterns
     allow: AllowedNames = AllowedNames(())
     deny: DeniedNames = DeniedNames(())
@@ -134,37 +136,28 @@ class PathOverrides(RootModel[tuple[PathOverride, ...]]):
             tuple(Arr(self.root).filter(lambda override: override.matches(path)))
         )
 
+    def _gathered[T](
+        self, key: Callable[[PathOverride], tuple[T, ...]]
+    ) -> tuple[T, ...]:
+        return tuple(Arr(self.root).map(key).flatten())
+
     def allowed(self) -> AllowedNames:
-        return AllowedNames(
-            tuple(Arr(self.root).map(lambda override: override.allow.root).flatten())
-        )
+        return AllowedNames(self._gathered(lambda override: override.allow.root))
 
     def denied(self) -> DeniedNames:
-        return DeniedNames(
-            tuple(Arr(self.root).map(lambda override: override.deny.root).flatten())
-        )
+        return DeniedNames(self._gathered(lambda override: override.deny.root))
 
     def ignored(self) -> Selectors:
-        return Selectors(
-            tuple(Arr(self.root).map(lambda override: override.ignore.root).flatten())
-        )
+        return Selectors(self._gathered(lambda override: override.ignore.root))
 
     def parameter_names(self) -> NamePatterns:
         return NamePatterns(
-            tuple(
-                Arr(self.root)
-                .map(lambda override: override.parameter_names().root)
-                .flatten()
-            )
+            self._gathered(lambda override: override.parameter_names().root)
         )
 
     def attribute_names(self) -> NamePatterns:
         return NamePatterns(
-            tuple(
-                Arr(self.root)
-                .map(lambda override: override.attribute_names().root)
-                .flatten()
-            )
+            self._gathered(lambda override: override.attribute_names().root)
         )
 
 
@@ -178,7 +171,7 @@ def _validated_entry(override: PathOverride, denied: DeniedTypes) -> None:
         raise PerPathError(override.paths, error) from error
 
 
-class Settings(IgnoredNames):
+class Settings(NameKeys):
     allow: AllowedNames = AllowedNames(())
     deny: DeniedNames = DeniedNames(())
     exclude: PathPatterns = PathPatterns(())

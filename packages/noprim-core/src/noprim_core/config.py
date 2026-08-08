@@ -1,3 +1,5 @@
+from functools import cached_property
+
 import pathspec
 from pydantic import BaseModel, Field, RootModel
 
@@ -51,9 +53,14 @@ class TopTypes(NameSet):
 
 
 class NamePatterns(RootModel[tuple[str, ...]]):
+    # Asked once per violation rather than once per file, so compiling every time
+    # would put pathspec's parser on the hot path.
+    @cached_property
+    def _spec(self) -> pathspec.PathSpec[pathspec.pattern.Pattern]:
+        return pathspec.PathSpec.from_lines("gitignore", self.root)
+
     def matches(self, name: Qualname) -> Verdict:
-        spec = pathspec.PathSpec.from_lines("gitignore", self.root)
-        return Verdict(spec.match_file(name.root))
+        return Verdict(self._spec.match_file(name.root))
 
     def joined(self, other: "NamePatterns") -> "NamePatterns":
         return NamePatterns(self.root + other.root)

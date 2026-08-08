@@ -291,6 +291,19 @@ def test_ignored_names_leave_return_types_alone() -> None:
     assert [(v.qualname.root, v.surface) for v in violations] == [("f", Surface.RETURN)]
 
 
+def test_an_ignored_name_covers_every_rule_on_that_surface() -> None:
+    config = CheckConfig(
+        selection=selection(
+            Preset.ALL, None, Selectors(()), Selectors((Selector("NOPRIM007"),))
+        ),
+        ignored_parameter_names=NamePatterns(("x",)),
+    )
+    violations = _check(SourceCode("def f(x: Any, y: Any) -> None: ...\n"), config)
+    assert [(v.qualname.root, v.code.root) for v in violations] == [
+        ("f.y", "NOPRIM004")
+    ]
+
+
 def test_a_parameter_and_an_attribute_of_one_name_are_ignored_apart() -> None:
     config = CheckConfig(
         selection=default_selection(),

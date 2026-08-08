@@ -117,8 +117,10 @@ noprim check --ignore-param-names name --ignore-param-names value .
 ```
 
 Every one of them matches gitignore-style globs as well as exact names, so
-`--ignore-param-names '*_contains'` covers a whole family. A return type carries the
-function's name, not one of its own, so it is never skipped this way.
+`--ignore-param-names '*_contains'` covers a whole family. A skipped name is skipped for
+every rule on that surface, not just the primitive one — the point is that the name was
+never yours to choose. A return type carries the function's name, not one of its own, so
+it is never skipped this way.
 
 ## Flags
 
@@ -178,6 +180,10 @@ allow = ["str", "int", "bool"]
 ignore = ["NOPRIM002"]
 ignore-param-names = ["name", "value"]
 ```
+
+An override's name patterns are appended to the top level's, and gitignore's
+last-match-wins applies across the join — so `ignore-param-names = ["!value"]` in an
+override puts `value` back under the rules for the paths it matches.
 
 Overrides carry `allow`, `deny`, `ignore` and the three `ignore-*-names` keys.
 `exclude` is not among them — it decides which files are walked at all, before any path

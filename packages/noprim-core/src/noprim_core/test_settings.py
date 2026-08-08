@@ -180,6 +180,24 @@ def test_an_override_ignores_names_for_the_paths_it_matches(
     assert not outside.ignored_parameter_names.matches(Qualname("name"))
 
 
+def test_an_override_can_re_include_a_name_the_top_level_ignored() -> None:
+    settings = Settings(
+        ignore_param_names=NamePatterns(("value",)),
+        per_path=(
+            PathOverride(
+                paths=PathPatterns(("domain/**",)),
+                ignore_param_names=NamePatterns(("!value",)),
+            ),
+        ),
+    )
+    assert not settings.resolve(
+        RelativePath("domain/a.py")
+    ).ignored_parameter_names.matches(Qualname("value"))
+    assert settings.resolve(
+        RelativePath("django_app/a.py")
+    ).ignored_parameter_names.matches(Qualname("value"))
+
+
 def test_an_override_can_ignore_a_rule_for_the_paths_it_matches() -> None:
     settings = Settings(
         per_path=(
