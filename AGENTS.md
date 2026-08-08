@@ -26,11 +26,26 @@ Once the file exists, a `check` run never writes to disk. Entries that no longer
 
 ## Rules
 
-A rule is one module under `noprim_core/rules/`, holding its code, whether it is on
-by default, `applies(site, config) -> Verdict` and its message — plus a
-table-driven test beside it over `Site` values. `rules/registry.py` lists them in one
-tuple; adding a rule is a new file and one line there, so two rules being added at
-once touch disjoint files.
+A rule is one module under `noprim_core/rules/`, holding one class that **inherits
+`Rule`** and declares its `code`, whether it is `on_by_default`, and
+`applies(site, config) -> Verdict` — plus a table-driven test beside it over `Site`
+values. `rules/registry.py` lists them in one tuple; adding a rule is a new file and
+one line there, so two rules being added at once touch disjoint files.
+
+Inherit `Rule` explicitly rather than matching it structurally: a forgotten `code` or
+a mistyped `applies` then fails at the class itself, instead of silently at runtime or
+far away at the registry's annotation. `Rule` stays a `Protocol`, so it is still
+satisfiable structurally where that is useful. Its `code` and `on_by_default` are
+properties for the same reason — a subclass that never sets a plain declared attribute
+typechecks clean, one that never implements a property does not.
+
+`Rule.message` has a body: the generic "…is annotated…" text, keyed on surface. A rule
+only defines `message` when it wants different wording, and can reach the generic
+version with `super().message(violation)`.
+
+Two tests in `test_registry.py` keep the tuple honest — every `Rule` subclass defined
+under `rules/` must appear in `RULES`, so a finished rule cannot sit there doing
+nothing, and a module may define at most one of them.
 
 Codes number by smell *and* by surface (`NOPRIM001` primitive parameter, `NOPRIM002`
 primitive return, ...), because the surface is the axis people actually want to turn
