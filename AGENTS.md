@@ -4,6 +4,7 @@ CLI that lints Python for primitive-typed function parameters.
 
 ## Layout
 
+- `packages/noprim-types/` (`noprim_types`) — the shipped utility types. Depends on nothing but pydantic, and is the one package with a public import surface.
 - `packages/noprim-core/` (`noprim_core`) — pure linting logic and value objects, plus the settings schema and per-path resolution. No CLI, no I/O.
 - `packages/noprim-io/` (`noprim_io`) — path walking, file reading, and config discovery.
 - `packages/noprim-cli/` (`noprim_cli`) — Typer app. Argument parsing and output formatting only.
@@ -40,9 +41,9 @@ JSON goes through pydantic models (`JsonReport`, `JsonStatistics`) rather than
 `json.dumps` over dicts: every field is a `RootModel`, which serialises as its root, so
 the shape is declared in one place and dogfoods the deny-list.
 
-Dependencies point one way: `noprim-core` <- `noprim-io` <- `noprim-cli`. Enforced by `tach` (`moon run :modularity`).
+Dependencies point one way: `noprim-types` <- `noprim-core` <- `noprim-io` <- `noprim-cli`. Enforced by `tach` (`moon run :modularity`).
 
-Three modules, **one distribution**. The root `pyproject.toml` is the only publishable package (`noprim`); it owns the `noprim` script and vendors all three module dirs into a single wheel. It uses hatchling rather than `uv_build` because `uv_build`'s `module-root` is one directory and cannot reach across `packages/*`.
+Four modules, **one distribution**. The root `pyproject.toml` is the only publishable package (`noprim`); it owns the `noprim` script and vendors all three module dirs into a single wheel. It uses hatchling rather than `uv_build` because `uv_build`'s `module-root` is one directory and cannot reach across `packages/*`.
 
 The per-package `pyproject.toml` files are **not** distributions — they have no `[build-system]` and are never built. They exist so `tach check-external` can enforce per-module external dependencies, which is what keeps `typer` out of `noprim-core`. Add a third-party dependency to both the module's manifest and the root's: the module's manifest satisfies `tach`, and the root's is what actually ships. Forgetting the root one usually surfaces as `moon run root:smoke` failing, though a lazily-imported dependency can slip past it.
 
@@ -175,7 +176,17 @@ Three things keep this honest, and all will fail loudly if you break them:
 
 - **Never take primitives as function parameters.** Wrap them in a Pydantic `RootModel` — a `str` says nothing about what it is; `UserId` does. This is what the project lints for, so dogfood it.
 - **No `tests/` folder.** Tests live beside the code as `test_<module>.py` — a test you can see is a test you maintain.
-- **Never maintain `__all__`, and keep every `__init__.py` empty.** A wall of `from x import Y as Y` is an `__all__` in disguise: a second source of truth that drifts, and a sorted list every branch inserts into. Import from the defining module (`from noprim_core.violation import Violation`); `tach` is what enforces the layer boundary.
+- **`noprim_types` is the library others import.** `Verdict`, `EnsuredDir` and
+  `NonBlankString` live there — only what pydantic lacks, which is why there is no
+  `ExistingDir` beside `DirectoryPath`. `ReplacementTable.default()` maps every denied
+  type to what to use instead, and `test_replacements.py` in core asserts its keys are
+  *exactly* `DeniedTypes.default()`: a new denied type fails a test until someone writes
+  the recommendation. Keep the module free of `iterpy` — `Verdict.any` takes an
+  `Iterable` for that reason — so importing it costs a user only pydantic.
+- **Never maintain `__all__`, and keep every `__init__.py` empty.** A wall of `from x import Y as Y` is an `__all__` in disguise: a second source of truth that drifts, and a sorted list every branch inserts into. Import from the defining module (`from noprim_core.violation import Violation`); `tach` is what enforces the layer boundary. `noprim_types/__init__.py` is the single
+  exception, carved out in `moon run :modularity`: a public surface is what an `__all__`
+  is *for*, and `test_public_surface.py` fails when it drifts from the classes the
+  package defines.
 - **A `Verdict` never unwraps.** It defines `__bool__`, so it reads as the answer it is: `if site.covers(v):`, `.filter(rule.on_by_default)`, `assert _raised(...)`. `and_`, `or_`, `negated` and `Verdict.any` compose several into one without leaving `Verdict` terms. Neither `.root` nor `bool(v)` should appear at a call site — the only `.root` is inside `Verdict` itself. Two settings buy this and are load-bearing: `implicit-bool = false` in `pyrefly.toml`, and `iterpy>=1.15`, whose `Arr.filter` takes a `Callable[[T], object]`.
 - **Prefer iterators over manual for-loops.** Use `iterpy`: `Arr([1,2,3]).map(lambda x: x+1).filter(lambda x: x>2).to_list()` — pipelines read top-to-bottom without accumulator state.
 - **Avoid constants.** Before defining one, ask whether it should be an argument from the caller — a constant is a decision frozen at the wrong layer.

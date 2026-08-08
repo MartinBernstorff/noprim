@@ -24,7 +24,9 @@ tasks:
       uv run tach check
       uv run tach check-external
       # ruff has no rule for this: PLC0414 skips __init__.py, and F401 accepts `X as X`.
-      walls="$(find packages -path '*/src/*/__init__.py' -size +0c)"
+      # noprim_types is the exception: it is a public import surface, so its __all__
+      # is the point rather than a second source of truth for internal callers.
+      walls="$(find packages -path '*/src/*/__init__.py' -size +0c -not -path '*/noprim_types/__init__.py')"
       test -z "$walls" || {
         echo "__init__.py must stay empty; export lists drift:"
         echo "$walls"
