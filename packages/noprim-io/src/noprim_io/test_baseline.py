@@ -4,7 +4,17 @@ from typing import Any, cast
 
 import pytest
 
-from noprim_core import Baseline, BaselineKey, Surface, Violation
+from noprim_core import (
+    AnnotationText,
+    Baseline,
+    BaselineKey,
+    ColumnNumber,
+    Filename,
+    LineNumber,
+    Qualname,
+    Surface,
+    Violation,
+)
 from noprim_io.baseline import (
     BaselinePath,
     MalformedBaselineError,
@@ -15,21 +25,34 @@ from noprim_io.baseline import (
     read_baseline,
     write_baseline,
 )
-from noprim_io.check import CheckPaths, CheckReport, FileError
+from noprim_io.check import CheckPaths, CheckReport, ErrorMessage, FileError, SourceFile
 
 
-def _key(filename: str = "src/a.py", qualname: str = "f.a") -> BaselineKey:
+def _key(filename: Filename, qualname: Qualname) -> BaselineKey:
     return BaselineKey(
         filename=filename,
         surface=Surface.PARAMETER,
         qualname=qualname,
-        annotation="str",
+        annotation=AnnotationText("str"),
     )
+
+
+def _report(
+    checked: tuple[SourceFile, ...], errors: tuple[FileError, ...] = ()
+) -> CheckReport:
+    return CheckReport(violations=(), errors=errors, checked=checked)
 
 
 def test_round_trips_a_baseline(tmp_path: Path) -> None:
     path = BaselinePath(tmp_path / ".noprim.json")
-    baseline = Baseline(frozenset({_key(), _key(qualname="f.b")}))
+    baseline = Baseline(
+        frozenset(
+            {
+                _key(Filename("src/a.py"), Qualname("f.a")),
+                _key(Filename("src/a.py"), Qualname("f.b")),
+            }
+        )
+    )
 
     write_baseline(path, baseline)
 
@@ -39,7 +62,17 @@ def test_round_trips_a_baseline(tmp_path: Path) -> None:
 def test_groups_entries_by_filename_on_disk(tmp_path: Path) -> None:
     path = BaselinePath(tmp_path / ".noprim.json")
 
-    write_baseline(path, Baseline(frozenset({_key(), _key(filename="src/b.py")})))
+    write_baseline(
+        path,
+        Baseline(
+            frozenset(
+                {
+                    _key(Filename("src/a.py"), Qualname("f.a")),
+                    _key(Filename("src/b.py"), Qualname("f.a")),
+                }
+            )
+        ),
+    )
 
     written = cast("dict[str, Any]", json.loads(path.root.read_text()))
     files = cast("dict[str, list[dict[str, str]]]", written["files"])
@@ -73,23 +106,17 @@ def test_keys_violations_relative_to_the_repo_above_the_baseline(
     (tmp_path / "nested").mkdir()
     path = BaselinePath(tmp_path / "nested" / ".noprim.json")
     violation = Violation(
-        filename=str(tmp_path / "src" / "a.py"),
-        line=1,
-        column=1,
+        filename=Filename(str(tmp_path / "src" / "a.py")),
+        line=LineNumber(1),
+        column=ColumnNumber(1),
         surface=Surface.PARAMETER,
-        qualname="f.a",
-        annotation="str",
+        qualname=Qualname("f.a"),
+        annotation=AnnotationText("str"),
     )
 
     keyed = keyed_violations(Violations((violation,)), path)
 
-    assert [entry.key.filename for entry in keyed.root] == ["src/a.py"]
-
-
-def _report(
-    checked: tuple[str, ...], errors: tuple[FileError, ...] = ()
-) -> CheckReport:
-    return CheckReport(violations=(), errors=errors, checked=checked)
+    assert [entry.key.filename.root for entry in keyed.root] == ["src/a.py"]
 
 
 def test_keys_relative_to_the_baseline_directory_without_a_repo(
@@ -101,13 +128,13 @@ def test_keys_relative_to_the_baseline_directory_without_a_repo(
     _ = analysed.write_text("")
 
     prunable = prunable_files(
-        _report((str(analysed),)),
+        _report((SourceFile(analysed),)),
         CheckPaths((tmp_path,)),
         Baseline.empty(),
         path,
     )
 
-    assert prunable.root == frozenset({"src/a.py"})
+    assert prunable.root == frozenset({Filename("src/a.py")})
 
 
 def test_a_file_that_would_not_parse_is_not_prunable(tmp_path: Path) -> None:
@@ -115,11 +142,14 @@ def test_a_file_that_would_not_parse_is_not_prunable(tmp_path: Path) -> None:
     broken = tmp_path / "broken.py"
     _ = broken.write_text("")
     error = FileError(
-        filename=str(broken), line=1, column=1, message="syntax error: nope"
+        filename=Filename(str(broken)),
+        line=LineNumber(1),
+        column=ColumnNumber(1),
+        message=ErrorMessage("syntax error: nope"),
     )
 
     prunable = prunable_files(
-        _report((str(broken),), (error,)),
+        _report((SourceFile(broken),), (error,)),
         CheckPaths((tmp_path,)),
         Baseline.empty(),
         path,
@@ -134,11 +164,11 @@ def test_an_entry_whose_file_is_gone_is_prunable(tmp_path: Path) -> None:
     prunable = prunable_files(
         _report(()),
         CheckPaths((tmp_path,)),
-        Baseline(frozenset({_key(filename="deleted.py")})),
+        Baseline(frozenset({_key(Filename("deleted.py"), Qualname("f.a"))})),
         path,
     )
 
-    assert prunable.root == frozenset({"deleted.py"})
+    assert prunable.root == frozenset({Filename("deleted.py")})
 
 
 def test_an_entry_outside_the_run_is_not_prunable(tmp_path: Path) -> None:
@@ -148,7 +178,7 @@ def test_an_entry_outside_the_run_is_not_prunable(tmp_path: Path) -> None:
     prunable = prunable_files(
         _report(()),
         CheckPaths((tmp_path / "inside",)),
-        Baseline(frozenset({_key(filename="outside/deleted.py")})),
+        Baseline(frozenset({_key(Filename("outside/deleted.py"), Qualname("f.a"))})),
         path,
     )
 

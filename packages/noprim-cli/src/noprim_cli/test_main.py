@@ -4,30 +4,30 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from noprim_cli.main import Duration, app, pretty_duration
+from noprim_cli.main import DisplayText, Duration, app, pretty_duration
 from noprim_core import Baseline
 from noprim_io import BaselinePath, read_baseline
 
 runner = CliRunner()
 
 
-def _plain(output: str) -> str:
+def _plain(output: DisplayText) -> DisplayText:
     # Rich colours and wraps errors, splitting "--allow" across escapes and lines.
-    stripped = re.sub(r"\x1b\[[0-9;]*m", "", output).replace("│", " ")
-    return " ".join(stripped.split())
+    stripped = re.sub(r"\x1b\[[0-9;]*m", "", output.root).replace("│", " ")
+    return DisplayText(" ".join(stripped.split()))
 
 
 def test_reports_each_surface_ruff_style(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
     _ = target.write_text(
-        "def greet(user_id: str) -> bool: ...\nclass Thing:\n    email: str\n"
+        "def greet(user_id: str) -> int: ...\nclass Thing:\n    email: str\n"
     )
 
     result = runner.invoke(app, ["check", str(target)])
 
     assert result.stdout.splitlines() == [
         f'{target}:1:20: parameter "user_id" is annotated "str"',
-        f'{target}:1:28: return type is annotated "bool"',
+        f'{target}:1:28: return type is annotated "int"',
         f'{target}:3:12: attribute "email" is annotated "str"',
     ]
 
@@ -162,12 +162,77 @@ def test_summary_counts_unreadable_files_apart_from_violations(tmp_path: Path) -
 
 def test_allow_removes_type_from_deny_list(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
-    _ = target.write_text("def f(x: Any) -> str: ...\n")
+    _ = target.write_text("def f(x: int) -> str: ...\n")
 
-    result = runner.invoke(app, ["check", "--allow", "Any", str(target)])
+    result = runner.invoke(app, ["check", "--allow", "int", str(target)])
 
     assert result.stdout.splitlines() == [
         f'{target}:1:18: return type is annotated "str"'
+    ]
+
+
+@pytest.mark.parametrize("annotation", ["Any", "object"])
+@pytest.mark.parametrize(("flags", "expected"), [([], 0), (["--top-types"], 1)])
+def test_top_types_are_reported_only_when_opted_into(
+    tmp_path: Path, annotation: str, flags: list[str], expected: int
+) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text(f"def f(x: {annotation}) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", *flags, str(target)])
+
+    assert result.exit_code == expected
+    assert (f'parameter "x" is annotated "{annotation}"' in result.stdout) == (
+        expected == 1
+    )
+
+
+@pytest.mark.parametrize("flags", [[], ["--top-types"]])
+def test_allow_of_a_top_type_exits_two(tmp_path: Path, flags: list[str]) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(x: Any) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", *flags, "--allow", "Any", str(target)])
+
+    assert result.exit_code == 2
+    assert (
+        "--allow of a type governed by --top-types: Any"
+        in _plain(DisplayText(result.output)).root
+    )
+
+
+def test_deny_of_a_top_type_reports_it_without_the_flag(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(x: Any, y: object) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", "--deny", "Any", str(target)])
+
+    assert result.exit_code == 1
+    assert 'parameter "x" is annotated "Any"' in result.stdout
+    assert 'parameter "y"' not in result.stdout
+
+
+def test_predicates_are_skipped_until_asked_for(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def is_ready(x: Name) -> bool: ...\n")
+
+    skipped = runner.invoke(app, ["check", str(target)])
+    checked = runner.invoke(app, ["check", "--check-predicates", str(target)])
+
+    assert skipped.stdout.splitlines() == []
+    assert checked.stdout.splitlines() == [
+        f'{target}:1:26: return type is annotated "bool"'
+    ]
+
+
+def test_ignore_names_skips_symbols_by_name(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(size: int, **kwargs: str) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", "--ignore-names", "kwargs", str(target)])
+
+    assert result.stdout.splitlines() == [
+        f'{target}:1:13: parameter "size" is annotated "int"'
     ]
 
 
@@ -217,7 +282,10 @@ def test_name_in_both_flags_exits_two(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 2
-    assert "passed to both --allow and --deny: int" in _plain(result.output)
+    assert (
+        "passed to both --allow and --deny: int"
+        in _plain(DisplayText(result.output)).root
+    )
 
 
 def test_allow_of_unknown_name_exits_two(tmp_path: Path) -> None:
@@ -227,8 +295,9 @@ def test_allow_of_unknown_name_exits_two(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", "--allow", "itn", str(target)])
 
     assert result.exit_code == 2
-    assert "--allow of a name that is not on the deny-list: itn" in _plain(
-        result.output
+    assert (
+        "--allow of a name that is not on the deny-list: itn"
+        in _plain(DisplayText(result.output)).root
     )
 
 
@@ -239,7 +308,7 @@ def test_empty_name_exits_two(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", "--deny", "", str(target)])
 
     assert result.exit_code == 2
-    assert "got an empty one" in _plain(result.output)
+    assert "got an empty one" in _plain(DisplayText(result.output)).root
 
 
 def test_invalid_flags_fail_before_walking_paths(tmp_path: Path) -> None:
@@ -249,6 +318,41 @@ def test_invalid_flags_fail_before_walking_paths(tmp_path: Path) -> None:
 
     assert result.exit_code == 2
     assert "Checked" not in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("seconds", "expected"),
+    [
+        (0.0, "0ms"),
+        (0.38, "380ms"),
+        (0.9999, "1.00s"),
+        (1.0, "1.00s"),
+        (1.2351, "1.24s"),
+        (62.5, "62.50s"),
+    ],
+)
+def test_pretty_duration(seconds: float, expected: str) -> None:
+    assert pretty_duration(Duration(seconds)).root == expected
+
+
+def test_a_directory_vanishing_mid_walk_exits_two(tmp_path: Path) -> None:
+    doomed = tmp_path / "doomed"
+    doomed.mkdir()
+    real_is_dir = Path.is_dir
+
+    # Stands in for Path.is_dir, so it is bound to that signature.
+    def vanish(self: Path) -> bool:  # noprim: ignore
+        verdict = real_is_dir(self)
+        if self == doomed and doomed.exists():
+            doomed.rmdir()
+        return verdict
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(Path, "is_dir", vanish)
+        result = runner.invoke(app, ["check", str(tmp_path)])
+
+    assert result.exit_code == 2
+    assert "doomed" in _plain(DisplayText(result.output)).root
 
 
 def test_writes_a_baseline_when_the_file_is_absent(tmp_path: Path) -> None:
@@ -336,17 +440,14 @@ def test_write_baseline_keeps_entries_for_files_it_did_not_walk(
 
     _ = runner.invoke(
         app,
-        [
-            "check",
-            "--baseline",
-            str(baseline),
-            "--write-baseline",
-            str(tmp_path / "a"),
-        ],
+        ["check", "--baseline", str(baseline), "--write-baseline", str(tmp_path / "a")],
     )
 
     recorded = read_baseline(BaselinePath(baseline))
-    assert sorted({key.filename for key in recorded.root}) == ["a/one.py", "b/two.py"]
+    assert sorted(key.filename.root for key in recorded.root) == [
+        "a/one.py",
+        "b/two.py",
+    ]
 
 
 def test_keeps_entries_for_a_file_that_stopped_parsing(tmp_path: Path) -> None:
@@ -364,7 +465,7 @@ def test_keeps_entries_for_a_file_that_stopped_parsing(tmp_path: Path) -> None:
 
     assert "no longer match" not in result.stderr
     recorded = read_baseline(BaselinePath(baseline))
-    assert {key.filename for key in recorded.root} == {"bad.py"}
+    assert {key.filename.root for key in recorded.root} == {"bad.py"}
 
 
 def test_write_baseline_drops_entries_for_deleted_files(tmp_path: Path) -> None:
@@ -380,7 +481,7 @@ def test_write_baseline_drops_entries_for_deleted_files(tmp_path: Path) -> None:
     )
 
     recorded = read_baseline(BaselinePath(baseline))
-    assert {key.filename for key in recorded.root} == {"kept.py"}
+    assert {key.filename.root for key in recorded.root} == {"kept.py"}
 
 
 def test_write_baseline_without_a_path_is_rejected(tmp_path: Path) -> None:
@@ -389,7 +490,9 @@ def test_write_baseline_without_a_path_is_rejected(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", "--write-baseline", str(tmp_path)])
 
     assert result.exit_code == 2
-    assert "--write-baseline needs --baseline" in _plain(result.output)
+    assert (
+        "--write-baseline needs --baseline" in _plain(DisplayText(result.output)).root
+    )
 
 
 def test_a_malformed_baseline_stops_the_run(tmp_path: Path) -> None:
@@ -421,18 +524,3 @@ def test_syntax_errors_are_not_suppressed_by_a_baseline(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "syntax error: " in result.stdout
-
-
-@pytest.mark.parametrize(
-    ("seconds", "expected"),
-    [
-        (0.0, "0ms"),
-        (0.38, "380ms"),
-        (0.9999, "1.00s"),
-        (1.0, "1.00s"),
-        (1.2351, "1.24s"),
-        (62.5, "62.50s"),
-    ],
-)
-def test_pretty_duration(seconds: float, expected: str) -> None:
-    assert pretty_duration(Duration(seconds)) == expected

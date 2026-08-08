@@ -67,3 +67,10 @@ tasks:
     inputs:
       - '@group(sources)'
       - '@group(manifests)'
+
+  # Dogfooding: every rule on, no --allow flags.
+  noprim:
+    script: 'uv run noprim check --top-types .'
+    inputs:
+      - '@group(sources)'
+      - '@group(manifests)'

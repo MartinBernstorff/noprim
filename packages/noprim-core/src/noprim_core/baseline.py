@@ -1,14 +1,27 @@
 from iterpy import Arr
 from pydantic import BaseModel, RootModel
 
-from noprim_core.checker import Surface, Violation
+from noprim_core.checker import AnnotationText, Filename, Qualname, Surface, Violation
 
 
 class BaselineKey(BaseModel, frozen=True):
-    filename: str
+    filename: Filename
     surface: Surface
-    qualname: str
-    annotation: str
+    qualname: Qualname
+    annotation: AnnotationText
+
+    def __lt__(self, other: "BaselineKey") -> bool:
+        return (
+            self.filename.root,
+            self.qualname.root,
+            str(self.surface),
+            self.annotation.root,
+        ) < (
+            other.filename.root,
+            other.qualname.root,
+            str(other.surface),
+            other.annotation.root,
+        )
 
 
 class Baseline(RootModel[frozenset[BaselineKey]]):
@@ -26,7 +39,7 @@ class KeyedViolations(RootModel[tuple[KeyedViolation, ...]]):
     pass
 
 
-class PrunableFiles(RootModel[frozenset[str]]):
+class PrunableFiles(RootModel[frozenset[Filename]]):
     pass
 
 
@@ -41,23 +54,21 @@ def apply_baseline(
     keyed: KeyedViolations, baseline: Baseline, prunable: PrunableFiles
 ) -> BaselineOutcome:
     entries = Arr(keyed.root)
-    found = frozenset(entries.map(lambda e: e.key))
+    found = frozenset(entries.map(lambda entry: entry.key))
     untouched = frozenset(
         Arr(baseline.root).filter(lambda key: key.filename not in prunable.root)
     )
     return BaselineOutcome(
         reported=tuple(
-            entries.filter(lambda e: e.key not in baseline.root).map(
-                lambda e: e.violation
+            entries.filter(lambda entry: entry.key not in baseline.root).map(
+                lambda entry: entry.violation
             )
         ),
         suppressed=tuple(
-            entries.filter(lambda e: e.key in baseline.root).map(lambda e: e.violation)
+            entries.filter(lambda entry: entry.key in baseline.root).map(
+                lambda entry: entry.violation
+            )
         ),
-        stale=tuple(sorted(baseline.root - found - untouched, key=_ordering)),
+        stale=tuple(sorted(baseline.root - found - untouched)),
         regenerated=Baseline(found | untouched),
     )
-
-
-def _ordering(key: BaselineKey) -> tuple[str, str, str, str]:
-    return (key.filename, key.qualname, str(key.surface), key.annotation)

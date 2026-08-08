@@ -20,6 +20,9 @@ pre-commit:
     - name: modularity
       run: moon run :modularity
 
+    - name: noprim
+      run: moon run :noprim
+
     - name: test
       run: moon run :test
 

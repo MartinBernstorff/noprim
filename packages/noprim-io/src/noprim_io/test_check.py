@@ -2,12 +2,18 @@ from pathlib import Path
 
 import pytest
 
-from noprim_core import Violation
-from noprim_io.check import CheckPaths, DiscoveryConfig, IgnorePatterns, check_paths
+from noprim_core import Qualname, Violation
+from noprim_io.check import (
+    CheckPaths,
+    DiscoveryConfig,
+    ExistingDirectory,
+    IgnorePatterns,
+    check_paths,
+)
 
 
-def _leaf(violation: Violation) -> str:
-    return violation.qualname.split(".")[-1]
+def _leaf(violation: Violation) -> Qualname:
+    return violation.qualname.leaf()
 
 
 def test_checks_an_explicitly_named_file(tmp_path: Path) -> None:
@@ -16,7 +22,7 @@ def test_checks_an_explicitly_named_file(tmp_path: Path) -> None:
 
     report = check_paths(CheckPaths((target,)), DiscoveryConfig())
 
-    assert [_leaf(v) for v in report.violations] == ["name"]
+    assert [_leaf(v).root for v in report.violations] == ["name"]
 
 
 def test_walks_a_directory_recursively(tmp_path: Path) -> None:
@@ -27,7 +33,7 @@ def test_walks_a_directory_recursively(tmp_path: Path) -> None:
 
     report = check_paths(CheckPaths((tmp_path,)), DiscoveryConfig())
 
-    assert sorted(_leaf(v) for v in report.violations) == ["a", "b"]
+    assert sorted(_leaf(v).root for v in report.violations) == ["a", "b"]
 
 
 def test_skips_gitignored_files_when_walking(tmp_path: Path) -> None:
@@ -39,7 +45,7 @@ def test_skips_gitignored_files_when_walking(tmp_path: Path) -> None:
 
     report = check_paths(CheckPaths((tmp_path,)), DiscoveryConfig())
 
-    assert [_leaf(v) for v in report.violations] == ["c"]
+    assert [_leaf(v).root for v in report.violations] == ["c"]
 
 
 def test_lints_a_gitignored_file_when_named_explicitly(tmp_path: Path) -> None:
@@ -49,7 +55,7 @@ def test_lints_a_gitignored_file_when_named_explicitly(tmp_path: Path) -> None:
 
     report = check_paths(CheckPaths((target,)), DiscoveryConfig())
 
-    assert [_leaf(v) for v in report.violations] == ["b"]
+    assert [_leaf(v).root for v in report.violations] == ["b"]
 
 
 @pytest.mark.parametrize(
@@ -73,7 +79,7 @@ def test_exclude_globs_match_root_relative_paths(
 
     report = check_paths(CheckPaths((tmp_path,)), DiscoveryConfig(excludes=glob))
 
-    assert sorted(_leaf(v) for v in report.violations) == sorted(expected)
+    assert sorted(_leaf(v).root for v in report.violations) == sorted(expected)
 
 
 def test_accepts_repeated_exclude_globs(tmp_path: Path) -> None:
@@ -86,7 +92,7 @@ def test_accepts_repeated_exclude_globs(tmp_path: Path) -> None:
         DiscoveryConfig(excludes=IgnorePatterns(("a.py", "b.py"))),
     )
 
-    assert [_leaf(v) for v in report.violations] == ["c"]
+    assert [_leaf(v).root for v in report.violations] == ["c"]
 
 
 def test_skips_stub_files(tmp_path: Path) -> None:
@@ -121,7 +127,7 @@ def test_reads_an_explicitly_named_symlinked_file(tmp_path: Path) -> None:
 
     report = check_paths(CheckPaths((link,)), DiscoveryConfig())
 
-    assert [_leaf(v) for v in report.violations] == ["a"]
+    assert [_leaf(v).root for v in report.violations] == ["a"]
 
 
 def test_undecodable_file_is_reported_as_an_error_without_stopping_the_run(
@@ -132,40 +138,39 @@ def test_undecodable_file_is_reported_as_an_error_without_stopping_the_run(
 
     report = check_paths(CheckPaths((tmp_path,)), DiscoveryConfig())
 
-    assert [_leaf(v) for v in report.violations] == ["b"]
-    assert [Path(e.filename).name for e in report.errors] == ["binary.py"]
-    assert [(e.line, e.column) for e in report.errors] == [(1, 1)]
-    assert report.errors[0].message.startswith("decode error: ")
+    assert [_leaf(v).root for v in report.violations] == ["b"]
+    assert [Path(e.filename.root).name for e in report.errors] == ["binary.py"]
+    assert [(e.line.root, e.column.root) for e in report.errors] == [(1, 1)]
+    assert report.errors[0].message.root.startswith("decode error: ")
 
 
-def _repo(tmp_path: Path) -> Path:
-    (tmp_path / ".git").mkdir()
-    (tmp_path / "src").mkdir()
-    return tmp_path
+def _make_repo(directory: ExistingDirectory) -> None:
+    (directory.root / ".git").mkdir()
+    (directory.root / "src").mkdir()
 
 
 def test_respects_a_gitignore_above_the_walked_directory(tmp_path: Path) -> None:
-    root = _repo(tmp_path)
-    _ = (root / ".gitignore").write_text("generated.py\n")
-    _ = (root / "src" / "generated.py").write_text("def f(a: int) -> None: ...\n")
-    _ = (root / "src" / "kept.py").write_text("def g(b: int) -> None: ...\n")
+    _make_repo(ExistingDirectory(tmp_path))
+    _ = (tmp_path / ".gitignore").write_text("generated.py\n")
+    _ = (tmp_path / "src" / "generated.py").write_text("def f(a: int) -> None: ...\n")
+    _ = (tmp_path / "src" / "kept.py").write_text("def g(b: int) -> None: ...\n")
 
-    report = check_paths(CheckPaths((root / "src",)), DiscoveryConfig())
+    report = check_paths(CheckPaths((tmp_path / "src",)), DiscoveryConfig())
 
-    assert [_leaf(v) for v in report.violations] == ["b"]
+    assert [_leaf(v).root for v in report.violations] == ["b"]
 
 
 def test_exclude_globs_are_relative_to_the_repo_root(tmp_path: Path) -> None:
-    root = _repo(tmp_path)
-    _ = (root / "src" / "old.py").write_text("def f(a: int) -> None: ...\n")
-    _ = (root / "src" / "kept.py").write_text("def g(b: int) -> None: ...\n")
+    _make_repo(ExistingDirectory(tmp_path))
+    _ = (tmp_path / "src" / "old.py").write_text("def f(a: int) -> None: ...\n")
+    _ = (tmp_path / "src" / "kept.py").write_text("def g(b: int) -> None: ...\n")
 
     report = check_paths(
-        CheckPaths((root / "src",)),
+        CheckPaths((tmp_path / "src",)),
         DiscoveryConfig(excludes=IgnorePatterns(("/src/old.py",))),
     )
 
-    assert [_leaf(v) for v in report.violations] == ["b"]
+    assert [_leaf(v).root for v in report.violations] == ["b"]
 
 
 def test_unparseable_file_is_reported_as_an_error_without_stopping_the_run(
@@ -176,10 +181,10 @@ def test_unparseable_file_is_reported_as_an_error_without_stopping_the_run(
 
     report = check_paths(CheckPaths((tmp_path,)), DiscoveryConfig())
 
-    assert [_leaf(v) for v in report.violations] == ["b"]
-    assert [e.filename for e in report.errors] == [str(tmp_path / "broken.py")]
-    assert report.errors[0].line == 2
-    assert report.errors[0].message.startswith("syntax error: ")
+    assert [_leaf(v).root for v in report.violations] == ["b"]
+    assert [e.filename.root for e in report.errors] == [str(tmp_path / "broken.py")]
+    assert report.errors[0].line.root == 2
+    assert report.errors[0].message.root.startswith("syntax error: ")
 
 
 def test_reports_the_files_it_walked(tmp_path: Path) -> None:
@@ -188,4 +193,7 @@ def test_reports_the_files_it_walked(tmp_path: Path) -> None:
 
     report = check_paths(CheckPaths((tmp_path,)), DiscoveryConfig())
 
-    assert sorted(report.checked) == [str(tmp_path / "a.py"), str(tmp_path / "b.py")]
+    assert sorted(str(file.root) for file in report.checked) == [
+        str(tmp_path / "a.py"),
+        str(tmp_path / "b.py"),
+    ]

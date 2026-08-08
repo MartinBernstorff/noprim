@@ -5,16 +5,25 @@ from iterpy import Arr
 from pydantic import BaseModel, RootModel, ValidationError
 
 from noprim_core import (
+    AnnotationText,
     Baseline,
     BaselineKey,
     Filename,
     KeyedViolation,
     KeyedViolations,
     PrunableFiles,
+    Qualname,
     Surface,
+    Verdict,
     Violation,
 )
-from noprim_io.check import CheckPaths, CheckReport, repo_root
+from noprim_io.check import (
+    CheckPaths,
+    CheckReport,
+    ExistingDirectory,
+    SourceFile,
+    repo_root,
+)
 
 
 class BaselinePath(RootModel[Path]):
@@ -45,33 +54,42 @@ class UnsupportedBaselineVersionError(Exception):
 
 class _Entry(BaseModel):
     surface: Surface
-    qualname: str
-    annotation: str
+    qualname: Qualname
+    annotation: AnnotationText
 
 
 class _Document(BaseModel):
-    version: int
-    files: dict[str, list[_Entry]]
+    version: BaselineVersion
+    files: dict[Filename, list[_Entry]]
 
 
-def _anchor(path: BaselinePath) -> Path:
-    directory = path.root.resolve().parent
-    root = repo_root(directory)
-    return root if (root / ".git").exists() else directory
+class _Anchor(RootModel[ExistingDirectory]):
+    @classmethod
+    def of(cls, path: BaselinePath) -> "_Anchor":
+        directory = ExistingDirectory(path.root.resolve().parent)
+        root = repo_root(directory)
+        if (root.root / ".git").exists():
+            return cls(root)
+        return cls(directory)
 
+    def relative(self, file: SourceFile) -> Filename:
+        resolved = file.root.resolve()
+        return Filename(resolved.relative_to(self.root.root, walk_up=True).as_posix())
 
-def _relative(filename: Filename, anchor: Path) -> str:
-    return Path(filename.root).resolve().relative_to(anchor, walk_up=True).as_posix()
+    def absolute(self, filename: Filename) -> SourceFile:
+        return SourceFile((self.root.root / filename.root).resolve())
 
 
 def keyed_violations(violations: Violations, path: BaselinePath) -> KeyedViolations:
-    anchor = _anchor(path)
+    anchor = _Anchor.of(path)
     return KeyedViolations(
         tuple(
             Arr(violations.root).map(
                 lambda violation: KeyedViolation(
                     key=BaselineKey(
-                        filename=_relative(Filename(violation.filename), anchor),
+                        filename=anchor.relative(
+                            SourceFile(Path(violation.filename.root))
+                        ),
                         surface=violation.surface,
                         qualname=violation.qualname,
                         annotation=violation.annotation,
@@ -83,37 +101,30 @@ def keyed_violations(violations: Violations, path: BaselinePath) -> KeyedViolati
     )
 
 
-def _within(candidate: Path, targets: CheckPaths) -> bool:
-    return (
+def _within(file: SourceFile, targets: CheckPaths) -> Verdict:
+    return Verdict(
         Arr(targets.root)
         .map(lambda target: target.resolve())
-        .any(lambda target: candidate == target or target in candidate.parents)
+        .any(lambda target: file.root == target or target in file.root.parents)
     )
 
 
 def prunable_files(
     report: CheckReport, targets: CheckPaths, baseline: Baseline, path: BaselinePath
 ) -> PrunableFiles:
-    anchor = _anchor(path)
+    anchor = _Anchor.of(path)
+    # A file noprim could not parse yields no evidence that its entries are stale.
     unreadable = frozenset(
         Arr(report.errors).map(
-            lambda error: _relative(Filename(error.filename), anchor)
+            lambda error: anchor.relative(SourceFile(Path(error.filename.root)))
         )
     )
-    # A file noprim could not parse yields no evidence that its entries are stale.
-    analysed = (
-        frozenset(
-            Arr(report.checked).map(lambda name: _relative(Filename(name), anchor))
-        )
-        - unreadable
-    )
+    analysed = frozenset(Arr(report.checked).map(anchor.relative)) - unreadable
     vanished = frozenset(
         Arr(baseline.root)
-        .map(lambda key: (anchor / key.filename).resolve())
-        .filter(
-            lambda candidate: _within(candidate, targets) and not candidate.exists()
-        )
-        .map(lambda candidate: _relative(Filename(str(candidate)), anchor))
+        .map(lambda key: anchor.absolute(key.filename))
+        .filter(lambda file: _within(file, targets).root and not file.root.exists())
+        .map(anchor.relative)
     )
     return PrunableFiles(analysed | vanished)
 
@@ -123,9 +134,8 @@ def read_baseline(path: BaselinePath) -> Baseline:
         document = _Document.model_validate_json(path.root.read_bytes())
     except (ValidationError, ValueError) as error:
         raise MalformedBaselineError(path) from error
-    version = BaselineVersion(document.version)
-    if version != BaselineVersion.current():
-        raise UnsupportedBaselineVersionError(path, version)
+    if document.version != BaselineVersion.current():
+        raise UnsupportedBaselineVersionError(path, document.version)
     return Baseline(
         frozenset(
             BaselineKey(
@@ -140,30 +150,23 @@ def read_baseline(path: BaselinePath) -> Baseline:
     )
 
 
-def _entry_order(key: BaselineKey) -> tuple[str, str]:
-    return (key.qualname, key.annotation)
-
-
 def write_baseline(path: BaselinePath, baseline: Baseline) -> None:
     grouped = (
-        Arr(sorted(baseline.root, key=_entry_order))
-        .groupby(lambda key: key.filename)
-        .to_list()
+        Arr(sorted(baseline.root)).groupby(lambda key: key.filename.root).to_list()
     )
-    document = _Document(
-        version=BaselineVersion.current().root,
-        files={
+    # Dumped by hand: a RootModel used as a dict key serialises as its repr.
+    document = {
+        "version": BaselineVersion.current().root,
+        "files": {
             filename: [
                 _Entry(
                     surface=key.surface,
                     qualname=key.qualname,
                     annotation=key.annotation,
-                )
+                ).model_dump(mode="json")
                 for key in keys
             ]
             for filename, keys in sorted(grouped)
         },
-    )
-    _ = path.root.write_text(
-        json.dumps(document.model_dump(mode="json"), indent=2, sort_keys=False) + "\n"
-    )
+    }
+    _ = path.root.write_text(json.dumps(document, indent=2) + "\n")
