@@ -11,9 +11,8 @@ class PrimitiveParameter:
     on_by_default = Verdict(root=True)
 
     def applies(self, site: Site, config: CheckConfig) -> Verdict:
-        return Verdict(
-            site.surface == Surface.PARAMETER
-            and bool(config.denied.matches(site.names))
+        return Verdict(site.surface == Surface.PARAMETER).and_(
+            config.denied.matches(site.names)
         )
 
     def message(self, violation: Violation) -> RuleMessage:

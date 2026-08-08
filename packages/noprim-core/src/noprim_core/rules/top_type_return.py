@@ -11,9 +11,8 @@ class TopTypeReturn:
     on_by_default = Verdict(root=False)
 
     def applies(self, site: Site, config: CheckConfig) -> Verdict:
-        return Verdict(
-            site.surface == Surface.RETURN
-            and bool(config.top_types.matches(site.names))
+        return Verdict(site.surface == Surface.RETURN).and_(
+            config.top_types.matches(site.names)
         )
 
     def message(self, violation: Violation) -> RuleMessage:

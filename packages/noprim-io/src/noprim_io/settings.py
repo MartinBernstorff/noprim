@@ -69,7 +69,7 @@ def _declares_a_table(file: ConfigFile) -> Verdict:
 def _is_config(file: ConfigFile) -> Verdict:
     if not file.root.is_file():
         return Verdict(root=False)
-    if bool(_is_standalone(file)):
+    if _is_standalone(file).holds:
         return Verdict(root=True)
     return _declares_a_table(file)
 
@@ -83,7 +83,7 @@ def _config_in(directory: ExistingDirectory) -> ConfigFile | None:
                 ConfigFile(directory.root / "noprim.toml"),
                 ConfigFile(directory.root / "pyproject.toml"),
             )
-            if bool(_is_config(file))
+            if _is_config(file).holds
         ),
         None,
     )
@@ -102,7 +102,7 @@ class ConfigDocument(RootModel[dict[str, object]]):
 
 
 def _document(file: ConfigFile) -> ConfigDocument:
-    if bool(_is_standalone(file)):
+    if _is_standalone(file).holds:
         return ConfigDocument(
             TomlConfigSettingsSource(_Standalone, toml_file=file.root)()
         )

@@ -143,7 +143,7 @@ class Settings(BaseModel):
         top_level = self._top_level()
         matching = (
             Arr(self.per_path)
-            .filter(lambda override: bool(override.matches(path)))
+            .filter(lambda override: override.matches(path).holds)
             .to_list()
         )
         return CheckConfig(

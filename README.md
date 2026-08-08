@@ -177,13 +177,13 @@ things worth recording:
 - **`X | None` was invisible.** The checker matched `Optional[str]` but not the PEP 604
   spelling, because `ast.BinOp` had no case. Nothing in the repo caught it until the
   tool was pointed at code that used unions.
-- **Booleans resist wrapping.** `Verdict` is a `RootModel[bool]` with `__bool__`, which
-  pyrefly rejects in both directions: `.filter()` is typed `Callable[[T], bool]` and
-  will not take a `Verdict`-returning predicate (2 `bad-argument-type` suppressions),
-  and `preset = "all"` forbids implicit truthiness (6 `implicit-bool` suppressions).
-  The second group could be spelled `.root` instead; the suppressions are deliberate,
-  so that the call sites read as booleans and every one of them disappears when iterpy
-  accepts anything boolish.
+- **Booleans resist wrapping.** `Verdict` is a `RootModel[bool]`, and a typechecker
+  rejects it in both directions: `iterpy`'s `.filter()` is typed `Callable[[T], bool]`
+  and will not take a `Verdict`-returning predicate, and pyrefly's `preset = "all"`
+  forbids implicit truthiness. Nine suppressions grew out of that before the answer
+  turned out to be behaviour rather than an escape hatch: `Verdict` gained `.and_()`,
+  `.or_()`, `.negated` and `Verdict.any()`, so answers compose as verdicts and `.holds`
+  unwraps once, at the boundary where a real `bool` is required.
 - **Frameworks own some signatures.** Typer reads the command's annotations to build
   the CLI, so those five parameters carry `# noprim: ignore`, as does one test double
   bound to `Path.is_dir`'s signature. pytest's ownership of test signatures was

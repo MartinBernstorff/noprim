@@ -46,7 +46,7 @@ class UnsupportedBaselineVersionError(Exception):
         self.outdated = Verdict(version.root < BaselineVersion.current().root)
         remedy = (
             "rerun with --write-baseline to regenerate it"
-            if self.outdated.root
+            if self.outdated.holds
             else "upgrade noprim"
         )
         super().__init__(
@@ -104,10 +104,10 @@ def keyed_violations(violations: Violations, path: BaselinePath) -> KeyedViolati
 
 
 def _within(file: SourceFile, targets: CheckPaths) -> Verdict:
-    return Verdict(
+    return Verdict.any(
         Arr(targets.root)
         .map(lambda target: target.resolve())
-        .any(lambda target: file.root == target or target in file.root.parents)
+        .map(lambda target: Verdict(file.root == target or target in file.root.parents))
     )
 
 
