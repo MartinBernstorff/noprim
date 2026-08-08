@@ -73,13 +73,24 @@ the enclosing function's name and decorators plus the module's filename — and
 Rules fire unconditionally; `noprim_core.suppression` is the one place that decides
 whether a violation is reported, and returns `(reported, suppressed)` rather than a
 silently shortened list. Each suppressed violation names its `SuppressionReason` —
-`comment`, `ignored-name`, `pytest` or `baseline` — so "why was this not reported?"
-has a single answer, and the summary can count them all rather than just the
-baseline's. Suppression is not a rule.
+`comment`, `file-comment`, `ignored-name`, `pytest` or `baseline` — so "why was this
+not reported?" has a single answer, and the summary can count them all rather than just
+the baseline's. Suppression is not a rule.
 
 `# noprim: ignore` covers every code on its line; `# noprim: ignore[NOPRIM002]` covers
 the ones it names. The comment must end the line, so a suppression cannot hide behind
 trailing prose.
+
+`# noprim: ignore-file` is the same grammar at module `Scope`, and only counts in the
+leading comment block — the comments before the first code token, which is the only
+part of a file that speaks for the file rather than for a line. It suppresses rather
+than skips: the file is still walked, still counted as checked, and its violations
+still join the suppressed count. Wanting the file not to be read at all is what
+`exclude` is for.
+
+Both comment parsers take a token stream rather than a `SourceCode`, so `tokens_in` runs
+once per file and the line-level and file-level readings cannot disagree about what a
+token is.
 
 `SuppressionReason.requested()` is what the summary counts: pytest owning a test or
 fixture signature is structural, like a dunder method being exempt, and counting those

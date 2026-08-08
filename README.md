@@ -103,6 +103,13 @@ brackets to suppress just those — `# noprim: ignore[NOPRIM002]`, or
 every rule on the line. A code that no rule answers to suppresses nothing, so check
 the spelling.
 
+A whole module can opt out with `# noprim: ignore-file` in its leading comment block —
+before the first statement, so it reads as a statement about the file rather than about
+a line. It takes the same brackets: `# noprim: ignore-file[NOPRIM002, NOPRIM003]` opts
+out of those two codes and leaves the rest reporting. The file is still checked and its
+violations still join the suppressed count; `exclude` in the config is what stops it
+being read at all.
+
 When a framework dictates the same name everywhere — `factory_boy` hooks take `kwargs`,
 `size`, `create` and `extracted` — suppressing it line by line is busywork. Skip the
 name instead:

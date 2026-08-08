@@ -19,10 +19,12 @@ from noprim_core.site import (
 )
 from noprim_core.source import SourceCode
 from noprim_core.suppression import (
+    IgnoredFile,
     IgnoredLines,
     PytestOwned,
     SuppressionOutcome,
     Suppressions,
+    tokens_in,
 )
 from noprim_core.verdict import Verdict
 from noprim_core.violation import Violation
@@ -224,8 +226,10 @@ def _violations_at(
 def _suppressions(
     source: SourceCode, sites: Arr[Site], config: CheckConfig
 ) -> Suppressions:
+    tokens = tokens_in(source)
     return Suppressions(
-        lines=IgnoredLines.parse(source),
+        file=IgnoredFile.parse(tokens),
+        lines=IgnoredLines.parse(tokens),
         names=config.ignored_names,
         pytest_owned=PytestOwned(
             frozenset(
