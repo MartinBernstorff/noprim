@@ -7,6 +7,7 @@ from noprim_core.checker import LineNumber as LineNumber
 from noprim_core.checker import Qualname as Qualname
 from noprim_core.checker import SourceCode as SourceCode
 from noprim_core.checker import Surface as Surface
+from noprim_core.checker import TopTypes as TopTypes
 from noprim_core.checker import Verdict as Verdict
 from noprim_core.checker import Violation as Violation
 from noprim_core.checker import check_source as check_source

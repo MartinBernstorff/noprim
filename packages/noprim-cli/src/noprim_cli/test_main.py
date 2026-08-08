@@ -160,13 +160,54 @@ def test_summary_counts_unreadable_files_apart_from_violations(tmp_path: Path) -
 
 def test_allow_removes_type_from_deny_list(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
-    _ = target.write_text("def f(x: Any) -> str: ...\n")
+    _ = target.write_text("def f(x: int) -> str: ...\n")
 
-    result = runner.invoke(app, ["check", "--allow", "Any", str(target)])
+    result = runner.invoke(app, ["check", "--allow", "int", str(target)])
 
     assert result.stdout.splitlines() == [
         f'{target}:1:18: return type is annotated "str"'
     ]
+
+
+@pytest.mark.parametrize("annotation", ["Any", "object"])
+def test_top_types_are_silent_by_default(tmp_path: Path, annotation: str) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text(f"def f(x: {annotation}) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", str(target)])
+
+    assert result.exit_code == 0
+    assert result.stdout == ""
+
+
+@pytest.mark.parametrize("annotation", ["Any", "object"])
+def test_top_types_flag_reports_them(tmp_path: Path, annotation: str) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text(f"def f(x: {annotation}) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", "--top-types", str(target)])
+
+    assert result.exit_code == 1
+    assert f'parameter "x" is annotated "{annotation}"' in result.stdout
+
+
+def test_allow_of_top_type_needs_the_rule_enabled(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(x: Any, y: object) -> None: ...\n")
+
+    enabled = runner.invoke(
+        app, ["check", "--top-types", "--allow", "Any", str(target)]
+    )
+    disabled = runner.invoke(app, ["check", "--allow", "Any", str(target)])
+
+    assert enabled.exit_code == 1
+    assert 'parameter "x"' not in enabled.stdout
+    assert 'parameter "y" is annotated "object"' in enabled.stdout
+    assert disabled.exit_code == 2
+    assert (
+        "--allow of a name that is not on the deny-list: Any"
+        in _plain(DisplayText(disabled.output)).root
+    )
 
 
 def test_deny_adds_type_to_deny_list(tmp_path: Path) -> None:

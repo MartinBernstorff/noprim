@@ -39,7 +39,9 @@ select = [
 ignore = ["E501"]
 
 [lint.per-file-ignores]
-"packages/noprim-cli/src/**" = ["FBT001", "FBT002"]
+# Typer derives the interface from the command's signature, so its arity and its
+# boolean flags are the CLI's, not a design choice to lint.
+"packages/noprim-cli/src/**" = ["FBT001", "FBT002", "PLR0913", "PLR0917"]
 "**/test_*.py" = ["PLR2004"]
 
 [lint.isort]

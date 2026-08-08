@@ -7,6 +7,7 @@ from noprim_core.checker import (
     Filename,
     SourceCode,
     Surface,
+    TopTypes,
     Violation,
     check_source,
 )
@@ -111,12 +112,22 @@ def test_ignores_annotations_outside_class_bodies(source: str) -> None:
         "set",
         "frozenset",
         "tuple",
-        "Any",
-        "object",
     ],
 )
 def test_default_deny_list(annotation: str) -> None:
     violations = _check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"))
+    assert [v.annotation.root for v in violations] == [annotation]
+
+
+@pytest.mark.parametrize("annotation", ["Any", "object"])
+def test_top_types_are_not_denied_by_default(annotation: str) -> None:
+    assert list(_check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"))) == []
+
+
+@pytest.mark.parametrize("annotation", ["Any", "object"])
+def test_top_types_reported_when_denied(annotation: str) -> None:
+    config = CheckConfig(denied=DeniedTypes(TopTypes.default().root))
+    violations = _check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"), config)
     assert [v.annotation.root for v in violations] == [annotation]
 
 

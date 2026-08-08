@@ -53,15 +53,15 @@ class DeniedTypes(RootModel[frozenset[str]]):
                     "set",
                     "frozenset",
                     "tuple",
-                    "Any",
-                    "object",
                 }
             )
         )
 
 
-class CheckConfig(BaseModel):
-    denied: DeniedTypes = Field(default_factory=DeniedTypes.default)
+class TopTypes(RootModel[frozenset[str]]):
+    @classmethod
+    def default(cls) -> "TopTypes":
+        return cls(frozenset({"Any", "object"}))
 
 
 class Surface(StrEnum):
@@ -90,6 +90,10 @@ class TypeNames(RootModel[frozenset[str]]):
 class Verdict(RootModel[bool]):
     def __bool__(self) -> bool:
         return self.root
+
+
+class CheckConfig(BaseModel):
+    denied: DeniedTypes = Field(default_factory=DeniedTypes.default)
 
 
 class Site(BaseModel):

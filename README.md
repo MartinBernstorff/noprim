@@ -26,9 +26,15 @@ Three surfaces, wherever a denied type appears anywhere inside the annotation â€
 
 The deny-list covers the builtins (`int`, `str`, `float`, `bool`, `bytes`,
 `bytearray`, `complex`), the stdlib value types (`Path`, `PurePath`, `UUID`,
-`datetime`, `date`, `time`, `timedelta`, `Decimal`, `Fraction`), the containers
-(`list`, `dict`, `set`, `frozenset`, `tuple`) and the escape hatches (`Any`,
-`object`). Adjust it per run with `--allow` and `--deny`.
+`datetime`, `date`, `time`, `timedelta`, `Decimal`, `Fraction`) and the containers
+(`list`, `dict`, `set`, `frozenset`, `tuple`). Adjust it per run with `--allow` and
+`--deny`.
+
+`Any` and `object` are not on it. They are top types, not primitives: they say the
+type is unknown rather than too narrow, and `object` is the right annotation for
+`**kwargs` you never inspect. That is a different smell, so it is its own rule and
+`--top-types` opts into it. `--allow` accepts `Any` and `object` only alongside
+`--top-types`, since otherwise there is nothing to allow.
 
 A container matches only when it is bare: `list` is reported, `list[Name]` is not,
 because the annotation names a collection of a type that is already meaningful. It is
@@ -65,6 +71,7 @@ The comment suppresses only the line it sits on, and must end the line â€” which
 | --- | --- |
 | `--allow NAME` | Remove a type from the deny-list. Repeatable. |
 | `--deny NAME` | Add a type to the deny-list. Repeatable. |
+| `--top-types` | Also report `Any` and `object`. Off by default. |
 | `--exclude GLOB` | Skip paths while walking. Gitignore syntax, anchored at the repo root. Repeatable. |
 | `--quiet`, `-q` | Suppress the trailing summary. |
 

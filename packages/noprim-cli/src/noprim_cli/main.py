@@ -13,6 +13,8 @@ from noprim_core import (
     Filename,
     LineNumber,
     Surface,
+    TopTypes,
+    Verdict,
     Violation,
 )
 from noprim_io import (
@@ -158,18 +160,24 @@ def _diagnostics(report: CheckReport) -> Arr[DisplayText]:
     return Arr(sorted(located)).map(Diagnostic.rendered)
 
 
-def _resolve_config(allow: AllowedNames, deny: DeniedNames) -> CheckConfig:
-    default = DeniedTypes.default().root
+def _resolve_config(
+    allow: AllowedNames, deny: DeniedNames, top_types: Verdict
+) -> CheckConfig:
+    allowable = DeniedTypes.default().root | (
+        TopTypes.default().root if top_types.root else frozenset[str]()
+    )
     # "" is the sentinel for unresolvable annotations, so denying it matches everything.
     if "" in set(allow.root) | set(deny.root):
         raise EmptyNameError
     conflicting = sorted(set(allow.root) & set(deny.root))
     if len(conflicting) > 0:
         raise AllowedAndDeniedError(AllowedNames(tuple(conflicting)))
-    unknown = sorted(set(allow.root) - default)
+    unknown = sorted(set(allow.root) - allowable)
     if len(unknown) > 0:
         raise NotOnDenyListError(AllowedNames(tuple(unknown)))
-    return CheckConfig(denied=DeniedTypes((default - set(allow.root)) | set(deny.root)))
+    return CheckConfig(
+        denied=DeniedTypes((allowable - set(allow.root)) | set(deny.root))
+    )
 
 
 # Typer derives the command-line interface from these annotations: a RootModel here
@@ -191,6 +199,10 @@ def check(
         list[str] | None,
         typer.Option("--exclude", help="Glob to skip while walking. Repeatable."),
     ] = None,
+    top_types: Annotated[  # noprim: ignore
+        bool,
+        typer.Option("--top-types", help="Also report Any and object. Off by default."),
+    ] = False,
     quiet: Annotated[  # noprim: ignore
         bool, typer.Option("--quiet", "-q", help="Suppress the summary.")
     ] = False,
@@ -198,6 +210,7 @@ def check(
     source = _resolve_config(
         AllowedNames(tuple(allow if allow is not None else ())),
         DeniedNames(tuple(deny if deny is not None else ())),
+        Verdict(top_types),
     )
 
     targets = tuple(paths) if paths is not None else (Path.cwd(),)
