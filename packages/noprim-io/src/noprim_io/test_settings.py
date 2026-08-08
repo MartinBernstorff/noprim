@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from pydantic import RootModel
 
 from noprim_core import DeniedTypes, RelativePath
@@ -184,3 +185,19 @@ def test_config_exclude_does_not_apply_to_an_explicitly_named_file(
     target = tmp_path / "test_infra" / "a.py"
 
     assert _violations(CheckPaths((target,)), config) == LeafNames(("x",))
+
+
+def test_a_broken_sibling_pyproject_is_not_read(tmp_path: Path) -> None:
+    root = _written(_repo(ExistingDirectory(tmp_path)), _DENY_ENUM)
+    _ = (tmp_path / "pyproject.toml").write_text("deny = [\n")
+
+    assert "Enum" in _denied(root).root
+
+
+def test_config_exclude_applies_to_a_relative_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _tree(ExistingDirectory(tmp_path), _EXCLUDE_TEST_INFRA)
+    monkeypatch.chdir(tmp_path)
+
+    assert _violations(CheckPaths((Path(),)), config) == LeafNames(("x",))

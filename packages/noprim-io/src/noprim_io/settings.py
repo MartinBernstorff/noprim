@@ -10,8 +10,8 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
-from noprim_core import PathPatterns, RelativePath, Settings, Verdict
-from noprim_io.paths import ExistingDirectory, SourceFile, repo_root
+from noprim_core import CheckConfig, PathPatterns, RelativePath, Settings, Verdict
+from noprim_io.paths import ExistingDirectory, SourceFile, ancestry, repo_root
 
 
 class ConfigFile(RootModel[Path]):
@@ -30,7 +30,10 @@ class LoadedSettings(BaseModel):
     def excludes(self) -> PathPatterns:
         return self.settings.exclude
 
-    def relative(self, file: SourceFile) -> RelativePath:
+    def for_file(self, file: SourceFile) -> CheckConfig:
+        return self.settings.resolve(self._relative(file))
+
+    def _relative(self, file: SourceFile) -> RelativePath:
         if self.anchor is None:
             return RelativePath("")
         try:
@@ -69,20 +72,27 @@ def _is_config(file: ConfigFile) -> Verdict:
     return _declares_a_table(file)
 
 
-def _config_in(directory: ExistingDirectory) -> Arr[ConfigFile]:
-    return (
-        Arr([directory.root / "noprim.toml", directory.root / "pyproject.toml"])
-        .map(ConfigFile)
-        .filter(lambda file: bool(_is_config(file)))
+def _config_in(directory: ExistingDirectory) -> ConfigFile | None:
+    # Lazily, so a malformed pyproject.toml beside a winning noprim.toml is never read.
+    return next(
+        (
+            file
+            for file in (
+                ConfigFile(directory.root / "noprim.toml"),
+                ConfigFile(directory.root / "pyproject.toml"),
+            )
+            if bool(_is_config(file))
+        ),
+        None,
     )
 
 
 def _searched(start: ExistingDirectory) -> Arr[ExistingDirectory]:
     root = repo_root(start)
-    if root.root == start.root and not (start.root / ".git").exists():
+    if root is None:
         return Arr([start])
-    lineage = [start.root, *start.root.parents]
-    return Arr(lineage[: lineage.index(root.root) + 1]).map(ExistingDirectory)
+    lineage = ancestry(start).to_list()
+    return Arr(lineage[: lineage.index(root) + 1])
 
 
 class ConfigDocument(RootModel[dict[str, object]]):
@@ -104,7 +114,7 @@ def load_settings(start: ExistingDirectory) -> LoadedSettings:
         (
             (directory, file)
             for directory in _searched(start)
-            for file in _config_in(directory)
+            if (file := _config_in(directory)) is not None
         ),
         None,
     )

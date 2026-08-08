@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from iterpy import Arr
 from pydantic import ConfigDict, RootModel, field_validator
 
 
@@ -26,12 +27,12 @@ class ExistingDirectory(RootModel[Path]):
         return value
 
 
-def repo_root(start: ExistingDirectory) -> ExistingDirectory:
+def ancestry(start: ExistingDirectory) -> Arr[ExistingDirectory]:
+    return Arr([start.root, *start.root.parents]).map(ExistingDirectory)
+
+
+def repo_root(start: ExistingDirectory) -> ExistingDirectory | None:
     return next(
-        (
-            ExistingDirectory(ancestor)
-            for ancestor in [start.root, *start.root.parents]
-            if (ancestor / ".git").exists()
-        ),
-        start,
+        (ancestor for ancestor in ancestry(start) if (ancestor.root / ".git").exists()),
+        None,
     )

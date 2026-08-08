@@ -91,7 +91,7 @@ function's name, not one of its own, so it is never skipped this way.
 | `--top-types` | Also report `Any` and `object`. Off by default. |
 | `--check-predicates` | Report functions returning `bool` instead of skipping them. |
 | `--ignore-names NAME` | Skip parameters and attributes called `NAME`. Repeatable. |
-| `--exclude GLOB` | Skip paths while walking. Gitignore syntax, anchored at the repo root. Repeatable. |
+| `--exclude GLOB` | Skip paths while walking. Gitignore syntax, anchored at the config file's directory, or the repo root when there is no config. Repeatable. |
 | `--quiet`, `-q` | Suppress the trailing summary. |
 
 Directories are walked recursively, honouring every `.gitignore` from the repo root

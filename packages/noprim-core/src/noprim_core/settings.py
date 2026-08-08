@@ -121,8 +121,11 @@ class Settings(BaseModel):
     def _names_are_coherent(self) -> Self:
         _validated(self.allow, self.deny, DeniedTypes.default())
         top_level = self._top_level()
-        for override in self.per_path:
-            _validated(override.allow, override.deny, top_level)
+        _ = (
+            Arr(self.per_path)
+            .map(lambda o: _validated(o.allow, o.deny, top_level))
+            .to_list()
+        )
         return self
 
     def _top_level(self) -> DeniedTypes:

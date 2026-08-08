@@ -43,7 +43,7 @@ class DiscoveryConfig(BaseModel):
     settings: LoadedSettings = Field(default_factory=LoadedSettings.empty)
 
     def for_file(self, file: SourceFile) -> CheckConfig:
-        return self.settings.settings.resolve(self.settings.relative(file))
+        return self.settings.for_file(file)
 
 
 class FileError(BaseModel):
@@ -66,13 +66,16 @@ class _AnchoredSpec(BaseModel):
     spec: pathspec.PathSpec[pathspec.Pattern]
 
     def matches(self, entry: DirectoryEntry) -> Verdict:
-        # A target outside the anchor has no path relative to it, so nothing anchored
-        # there can describe it.
-        if not entry.root.is_relative_to(self.anchor.root):
+        # Entries keep the spelling the caller typed, so both sides need the same
+        # form before one can be expressed relative to the other.
+        target = entry.root.absolute()
+        anchor = self.anchor.root.absolute()
+        if not target.is_relative_to(anchor):
             return Verdict(root=False)
-        relative = entry.root.relative_to(self.anchor.root).as_posix()
         suffix = "/" if entry.root.is_dir() else ""
-        return Verdict(self.spec.match_file(f"{relative}{suffix}"))
+        return Verdict(
+            self.spec.match_file(f"{target.relative_to(anchor).as_posix()}{suffix}")
+        )
 
 
 def _spec_anchored_at(
@@ -146,7 +149,8 @@ def _matches_any(entry: DirectoryEntry, specs: Arr[_AnchoredSpec]) -> Verdict:
 
 
 def _walk(directory: ExistingDirectory, config: DiscoveryConfig) -> Arr[SourceFile]:
-    root = repo_root(directory)
+    found = repo_root(directory)
+    root = directory if found is None else found
     anchor = config.settings.anchor
     inherited = (
         _ancestors_below(root, directory)
