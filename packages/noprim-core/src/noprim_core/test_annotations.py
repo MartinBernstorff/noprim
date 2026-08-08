@@ -22,6 +22,7 @@ def _expression(text: AnnotationText) -> ast.expr:
         ("str", {"str"}),
         ("Name", {"Name"}),
         ("datetime.datetime", {"datetime"}),
+        ("dt.datetime", {"datetime"}),
         ("T", {"T"}),
         ("42", set()),
     ],
@@ -33,8 +34,6 @@ def test_names_in_plain_annotations(annotation: str, expected: set[str]) -> None
 @pytest.mark.parametrize(
     ("annotation", "expected"),
     [
-        # A bare container is a type name; a subscripted one is only its arguments,
-        # so `list` is reported and `list[Name]` is not.
         ("list", {"list"}),
         ("list[str]", {"str"}),
         ("list[Name]", {"Name"}),
@@ -45,7 +44,9 @@ def test_names_in_plain_annotations(annotation: str, expected: set[str]) -> None
         ("list[list[dict[Name, str]]]", {"Name", "str"}),
     ],
 )
-def test_names_in_subscripts(annotation: str, expected: set[str]) -> None:
+def test_bare_container_is_a_name_but_a_subscripted_one_is_only_its_arguments(
+    annotation: str, expected: set[str]
+) -> None:
     assert names_in_text(AnnotationText(annotation)).root == expected
 
 
