@@ -57,3 +57,10 @@ tasks:
     inputs:
       - '@group(sources)'
       - '@group(manifests)'
+
+  # Dogfooding: the linter is run against its own source, with no --allow flags.
+  noprim:
+    script: 'uv run noprim check .'
+    inputs:
+      - '@group(sources)'
+      - '@group(manifests)'

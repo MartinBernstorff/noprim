@@ -12,45 +12,47 @@ from noprim_core.checker import (
 )
 
 
-def _check(source: str, config: CheckConfig | None = None) -> Arr[Violation]:
+def _check(source: SourceCode, config: CheckConfig | None = None) -> Arr[Violation]:
     return check_source(
-        SourceCode(source),
+        source,
         Filename("a.py"),
         config if config is not None else CheckConfig(),
     )
 
 
 def test_flags_primitive_parameter() -> None:
-    violations = _check("def greet(name: str) -> None: ...\n")
-    assert [v.qualname for v in violations] == ["greet.name"]
-    assert violations[0].annotation == "str"
+    violations = _check(SourceCode("def greet(name: str) -> None: ...\n"))
+    assert [v.qualname.root for v in violations] == ["greet.name"]
+    assert violations[0].annotation.root == "str"
     assert violations[0].surface == Surface.PARAMETER
 
 
 def test_locates_violations_at_the_annotation() -> None:
-    violations = _check("def greet(name: str) -> bool: ...\n")
-    assert [(v.line, v.column) for v in violations] == [(1, 17), (1, 25)]
+    violations = _check(SourceCode("def greet(name: str) -> bool: ...\n"))
+    assert [(v.line.root, v.column.root) for v in violations] == [(1, 17), (1, 25)]
 
 
 def test_ignores_non_primitive_parameter() -> None:
-    assert list(_check("def greet(name: Name) -> None: ...\n")) == []
+    assert list(_check(SourceCode("def greet(name: Name) -> None: ...\n"))) == []
 
 
 def test_flags_keyword_only_and_async() -> None:
-    violations = _check("async def f(*, count: int) -> None: ...\n")
-    assert [v.qualname for v in violations] == ["f.count"]
+    violations = _check(SourceCode("async def f(*, count: int) -> None: ...\n"))
+    assert [v.qualname.root for v in violations] == ["f.count"]
 
 
 def test_flags_primitive_return() -> None:
-    violations = _check("def f(x: Name) -> bool: ...\n")
-    assert [(v.qualname, v.surface, v.annotation) for v in violations] == [
+    violations = _check(SourceCode("def f(x: Name) -> bool: ...\n"))
+    assert [(v.qualname.root, v.surface, v.annotation.root) for v in violations] == [
         ("f", Surface.RETURN, "bool")
     ]
 
 
 def test_qualifies_method_surfaces_with_their_class() -> None:
-    violations = _check("class Thing:\n    def m(self, y: int) -> bool: ...\n")
-    assert [(v.qualname, v.surface) for v in violations] == [
+    violations = _check(
+        SourceCode("class Thing:\n    def m(self, y: int) -> bool: ...\n")
+    )
+    assert [(v.qualname.root, v.surface) for v in violations] == [
         ("Thing.m.y", Surface.PARAMETER),
         ("Thing.m", Surface.RETURN),
     ]
@@ -67,8 +69,8 @@ def test_qualifies_method_surfaces_with_their_class() -> None:
     ],
 )
 def test_flags_primitive_class_attribute(base: str, annotation: str) -> None:
-    violations = _check(f"class Thing({base}):\n    count: {annotation}\n")
-    assert [(v.qualname, v.surface, v.annotation) for v in violations] == [
+    violations = _check(SourceCode(f"class Thing({base}):\n    count: {annotation}\n"))
+    assert [(v.qualname.root, v.surface, v.annotation.root) for v in violations] == [
         ("Thing.count", Surface.ATTRIBUTE, annotation)
     ]
 
@@ -82,7 +84,7 @@ def test_flags_primitive_class_attribute(base: str, annotation: str) -> None:
     ],
 )
 def test_ignores_annotations_outside_class_bodies(source: str) -> None:
-    assert list(_check(source)) == []
+    assert list(_check(SourceCode(source))) == []
 
 
 @pytest.mark.parametrize(
@@ -114,14 +116,14 @@ def test_ignores_annotations_outside_class_bodies(source: str) -> None:
     ],
 )
 def test_default_deny_list(annotation: str) -> None:
-    violations = _check(f"def f(x: {annotation}) -> None: ...\n")
-    assert [v.annotation for v in violations] == [annotation]
+    violations = _check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"))
+    assert [v.annotation.root for v in violations] == [annotation]
 
 
 @pytest.mark.parametrize("annotation", ["datetime.datetime", "dt.datetime"])
 def test_matches_on_last_dotted_segment(annotation: str) -> None:
-    violations = _check(f"def f(x: {annotation}) -> None: ...\n")
-    assert [v.annotation for v in violations] == [annotation]
+    violations = _check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"))
+    assert [v.annotation.root for v in violations] == [annotation]
 
 
 @pytest.mark.parametrize(
@@ -138,7 +140,7 @@ def test_matches_on_last_dotted_segment(annotation: str) -> None:
     ],
 )
 def test_passes_clean_annotations(source: str) -> None:
-    assert list(_check(source)) == []
+    assert list(_check(SourceCode(source))) == []
 
 
 @pytest.mark.parametrize(
@@ -153,8 +155,26 @@ def test_passes_clean_annotations(source: str) -> None:
     ],
 )
 def test_flags_nested_primitive_once_with_full_text(annotation: str) -> None:
-    violations = _check(f"def f(x: {annotation}) -> None: ...\n")
-    assert [(v.qualname, v.annotation) for v in violations] == [("f.x", annotation)]
+    violations = _check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"))
+    assert [(v.qualname.root, v.annotation.root) for v in violations] == [
+        ("f.x", annotation)
+    ]
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    ["str | None", "None | str", "Name | str", "list[Name] | str"],
+)
+def test_flags_primitives_inside_unions(annotation: str) -> None:
+    violations = _check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"))
+    assert [(v.qualname.root, v.annotation.root) for v in violations] == [
+        ("f.x", annotation)
+    ]
+
+
+@pytest.mark.parametrize("annotation", ["Name | None", "Name | Other"])
+def test_passes_unions_without_primitives(annotation: str) -> None:
+    assert list(_check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"))) == []
 
 
 @pytest.mark.parametrize(
@@ -162,18 +182,20 @@ def test_flags_nested_primitive_once_with_full_text(annotation: str) -> None:
     ["Literal['a', 'b']", "typing.Literal[1, 2]", "dict[Name, Literal['a']]"],
 )
 def test_ignores_literal_arguments(annotation: str) -> None:
-    assert list(_check(f"def f(x: {annotation}) -> None: ...\n")) == []
+    assert list(_check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"))) == []
 
 
-@pytest.mark.parametrize("annotation", ['"str"', 'list["str"]', '"list[str]"'])
+@pytest.mark.parametrize(
+    "annotation", ['"str"', 'list["str"]', '"list[str]"', '"str | None"']
+)
 def test_parses_string_annotations(annotation: str) -> None:
-    violations = _check(f"def f(x: {annotation}) -> None: ...\n")
-    assert [v.qualname for v in violations] == ["f.x"]
+    violations = _check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"))
+    assert [v.qualname.root for v in violations] == ["f.x"]
 
 
 @pytest.mark.parametrize("annotation", ['"not python!!"', '""', '"list["'])
 def test_skips_unparseable_string_annotations(annotation: str) -> None:
-    assert list(_check(f"def f(x: {annotation}) -> None: ...\n")) == []
+    assert list(_check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"))) == []
 
 
 @pytest.mark.parametrize(
@@ -184,7 +206,7 @@ def test_skips_unparseable_string_annotations(annotation: str) -> None:
     ],
 )
 def test_exempts_self_and_cls(source: str) -> None:
-    assert list(_check(source)) == []
+    assert list(_check(SourceCode(source))) == []
 
 
 @pytest.mark.parametrize(
@@ -195,7 +217,7 @@ def test_exempts_self_and_cls(source: str) -> None:
     ],
 )
 def test_exempts_dunder_methods(source: str) -> None:
-    assert list(_check(source)) == []
+    assert list(_check(SourceCode(source))) == []
 
 
 @pytest.mark.parametrize(
@@ -206,7 +228,7 @@ def test_exempts_dunder_methods(source: str) -> None:
     ],
 )
 def test_exempts_root_model_bodies(source: str) -> None:
-    assert list(_check(source)) == []
+    assert list(_check(SourceCode(source))) == []
 
 
 @pytest.mark.parametrize(
@@ -217,32 +239,79 @@ def test_exempts_root_model_bodies(source: str) -> None:
     ],
 )
 def test_exempts_new_type_calls(source: str) -> None:
-    assert list(_check(source)) == []
+    assert list(_check(SourceCode(source))) == []
 
 
 def test_exempts_overload_implementation() -> None:
     source = "@overload\ndef f(x: Name) -> Name: ...\ndef f(x: object) -> object: ...\n"
-    assert list(_check(source)) == []
+    assert list(_check(SourceCode(source))) == []
 
 
 def test_reports_overload_stubs_only() -> None:
     violations = _check(
-        "@overload\ndef f(x: int) -> str: ...\n"
-        "@overload\ndef f(x: Name) -> Name: ...\n"
-        "def f(x: object) -> object: ...\n"
+        SourceCode(
+            "@overload\ndef f(x: int) -> str: ...\n"
+            "@overload\ndef f(x: Name) -> Name: ...\n"
+            "def f(x: object) -> object: ...\n"
+        )
     )
-    assert [(v.line, v.annotation) for v in violations] == [(2, "int"), (2, "str")]
+    assert [(v.line.root, v.annotation.root) for v in violations] == [
+        (2, "int"),
+        (2, "str"),
+    ]
+
+
+@pytest.mark.parametrize("filename", ["test_thing.py", "thing_test.py"])
+def test_exempts_parameters_of_test_functions(filename: str) -> None:
+    violations = check_source(
+        SourceCode(
+            "def test_walks(tmp_path: Path, expected: list[str]) -> None: ...\n"
+        ),
+        Filename(filename),
+        CheckConfig(),
+    )
+    assert list(violations) == []
+
+
+@pytest.mark.parametrize(
+    "decorator", ["@pytest.fixture", "@fixture", "@pytest.fixture(scope='session')"]
+)
+def test_exempts_parameters_of_fixtures(decorator: str) -> None:
+    violations = check_source(
+        SourceCode(f"{decorator}\ndef repo(tmp_path: Path) -> Repo: ...\n"),
+        Filename("test_thing.py"),
+        CheckConfig(),
+    )
+    assert list(violations) == []
+
+
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        ("thing.py", "def test_walks(tmp_path: Path) -> None: ...\n"),
+        ("thing.py", "@pytest.fixture\ndef repo(tmp_path: Path) -> Repo: ...\n"),
+        ("test_thing.py", "def _helper(source: str) -> None: ...\n"),
+        ("test_thing.py", "def test_walks(x: Name) -> str: ...\n"),
+        ("test_thing.py", "@pytest.fixture\ndef repo() -> Path: ...\n"),
+        ("contest_thing.py", "def test_walks(tmp_path: Path) -> None: ...\n"),
+    ],
+)
+def test_exemption_covers_only_test_function_parameters(
+    filename: str, source: str
+) -> None:
+    violations = check_source(SourceCode(source), Filename(filename), CheckConfig())
+    assert len(list(violations)) == 1
 
 
 def test_private_functions_still_report() -> None:
-    violations = _check("def _f(x: int) -> None: ...\n")
-    assert [v.qualname for v in violations] == ["_f.x"]
+    violations = _check(SourceCode("def _f(x: int) -> None: ...\n"))
+    assert [v.qualname.root for v in violations] == ["_f.x"]
 
 
 def test_uses_configured_deny_list() -> None:
     config = CheckConfig(denied=DeniedTypes(frozenset({"Name"})))
-    violations = _check("def f(x: Name, y: str) -> None: ...\n", config)
-    assert [v.qualname for v in violations] == ["f.x"]
+    violations = _check(SourceCode("def f(x: Name, y: str) -> None: ...\n"), config)
+    assert [v.qualname.root for v in violations] == ["f.x"]
 
 
 @pytest.mark.parametrize(
@@ -268,4 +337,4 @@ def test_uses_configured_deny_list() -> None:
 def test_ignore_comment_suppresses_only_its_own_line(
     source: str, expected: list[str]
 ) -> None:
-    assert [v.qualname for v in _check(source)] == expected
+    assert [v.qualname.root for v in _check(SourceCode(source))] == expected

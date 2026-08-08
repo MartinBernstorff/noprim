@@ -4,15 +4,15 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from noprim_cli.main import Duration, app, pretty_duration
+from noprim_cli.main import DisplayText, Duration, app, pretty_duration
 
 runner = CliRunner()
 
 
-def _plain(output: str) -> str:
+def _plain(output: DisplayText) -> DisplayText:
     # Rich colours and wraps errors, splitting "--allow" across escapes and lines.
-    stripped = re.sub(r"\x1b\[[0-9;]*m", "", output).replace("│", " ")
-    return " ".join(stripped.split())
+    stripped = re.sub(r"\x1b\[[0-9;]*m", "", output.root).replace("│", " ")
+    return DisplayText(" ".join(stripped.split()))
 
 
 def test_reports_each_surface_ruff_style(tmp_path: Path) -> None:
@@ -215,7 +215,10 @@ def test_name_in_both_flags_exits_two(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 2
-    assert "passed to both --allow and --deny: int" in _plain(result.output)
+    assert (
+        "passed to both --allow and --deny: int"
+        in _plain(DisplayText(result.output)).root
+    )
 
 
 def test_allow_of_unknown_name_exits_two(tmp_path: Path) -> None:
@@ -225,8 +228,9 @@ def test_allow_of_unknown_name_exits_two(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", "--allow", "itn", str(target)])
 
     assert result.exit_code == 2
-    assert "--allow of a name that is not on the deny-list: itn" in _plain(
-        result.output
+    assert (
+        "--allow of a name that is not on the deny-list: itn"
+        in _plain(DisplayText(result.output)).root
     )
 
 
@@ -237,7 +241,7 @@ def test_empty_name_exits_two(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", "--deny", "", str(target)])
 
     assert result.exit_code == 2
-    assert "got an empty one" in _plain(result.output)
+    assert "got an empty one" in _plain(DisplayText(result.output)).root
 
 
 def test_invalid_flags_fail_before_walking_paths(tmp_path: Path) -> None:
@@ -261,4 +265,24 @@ def test_invalid_flags_fail_before_walking_paths(tmp_path: Path) -> None:
     ],
 )
 def test_pretty_duration(seconds: float, expected: str) -> None:
-    assert pretty_duration(Duration(seconds)) == expected
+    assert pretty_duration(Duration(seconds)).root == expected
+
+
+def test_a_directory_vanishing_mid_walk_exits_two(tmp_path: Path) -> None:
+    doomed = tmp_path / "doomed"
+    doomed.mkdir()
+    real_is_dir = Path.is_dir
+
+    # Stands in for Path.is_dir, so it is bound to that signature.
+    def vanish(self: Path) -> bool:  # noprim: ignore
+        verdict = real_is_dir(self)
+        if self == doomed and doomed.exists():
+            doomed.rmdir()
+        return verdict
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(Path, "is_dir", vanish)
+        result = runner.invoke(app, ["check", str(tmp_path)])
+
+    assert result.exit_code == 2
+    assert "doomed" in _plain(DisplayText(result.output)).root

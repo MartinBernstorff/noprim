@@ -1,11 +1,20 @@
 from pathlib import Path
 from time import perf_counter
-from typing import Annotated
+from typing import Annotated, override
 
 import typer
-from pydantic import RootModel
+from iterpy import Arr
+from pydantic import BaseModel, RootModel, ValidationError
 
-from noprim_core import CheckConfig, DeniedTypes, Surface, Violation
+from noprim_core import (
+    CheckConfig,
+    ColumnNumber,
+    DeniedTypes,
+    Filename,
+    LineNumber,
+    Surface,
+    Violation,
+)
 from noprim_io import (
     CheckPaths,
     CheckReport,
@@ -55,56 +64,98 @@ class Noun(RootModel[str]):
     pass
 
 
+class DisplayText(RootModel[str]):
+    # Interpolated into other messages, so it has to render as its text and not as
+    # the model's repr.
+    @override
+    def __str__(self) -> str:
+        return self.root
+
+    @override
+    def __repr__(self) -> str:
+        return self.root
+
+
 @app.callback()
 def cli() -> None:
     """Find function parameters annotated with primitive types."""
 
 
-def pretty_duration(duration: Duration) -> str:
+def pretty_duration(duration: Duration) -> DisplayText:
     milliseconds = round(duration.root * 1000)
     seconds, remainder = divmod(milliseconds, 1000)
     if seconds == 0:
-        return f"{remainder}ms"
-    return f"{milliseconds / 1000:.2f}s"
+        return DisplayText(f"{remainder}ms")
+    return DisplayText(f"{milliseconds / 1000:.2f}s")
 
 
-def _plural(count: Count, noun: Noun) -> str:
-    return (
-        f"{count.root} {noun.root}" if count.root == 1 else f"{count.root} {noun.root}s"
-    )
+def _plural(count: Count, noun: Noun) -> DisplayText:
+    plural = "" if count.root == 1 else "s"
+    return DisplayText(f"{count.root} {noun.root}{plural}")
 
 
-def _message(violation: Violation) -> str:
-    name = violation.qualname.rsplit(".", 1)[-1]
+def _message(violation: Violation) -> DisplayText:
+    name = violation.qualname.leaf().root
+    annotation = violation.annotation.root
     match violation.surface:
         case Surface.PARAMETER:
-            return f'parameter "{name}" is annotated "{violation.annotation}"'
+            return DisplayText(f'parameter "{name}" is annotated "{annotation}"')
         case Surface.RETURN:
-            return f'return type is annotated "{violation.annotation}"'
+            return DisplayText(f'return type is annotated "{annotation}"')
         case Surface.ATTRIBUTE:
-            return f'attribute "{name}" is annotated "{violation.annotation}"'
+            return DisplayText(f'attribute "{name}" is annotated "{annotation}"')
 
 
-def _found(report: CheckReport) -> str:
+def _found(report: CheckReport) -> DisplayText:
     violations = (
         f"found {_plural(Count(len(report.violations)), Noun('violation'))}"
         if len(report.violations) > 0
         else "no violations"
     )
     if len(report.errors) == 0:
-        return violations
-    return f"{violations}, {_plural(Count(len(report.errors)), Noun('error'))}"
+        return DisplayText(violations)
+    errors = _plural(Count(len(report.errors)), Noun("error"))
+    return DisplayText(f"{violations}, {errors}")
 
 
-def _diagnostics(report: CheckReport) -> list[str]:
-    located = sorted(
-        [(v.filename, v.line, v.column, _message(v)) for v in report.violations]
-        + [(e.filename, e.line, e.column, e.message) for e in report.errors]
-    )
-    return [
-        f"{filename}:{line}:{column}: {text}"
-        for filename, line, column, text in located
+class Diagnostic(BaseModel):
+    filename: Filename
+    line: LineNumber
+    column: ColumnNumber
+    text: DisplayText
+
+    def __lt__(self, other: "Diagnostic") -> bool:
+        return (self.filename.root, self.line.root, self.column.root) < (
+            other.filename.root,
+            other.line.root,
+            other.column.root,
+        )
+
+    def rendered(self) -> DisplayText:
+        return DisplayText(
+            f"{self.filename.root}:{self.line.root}:{self.column.root}: {self.text}"
+        )
+
+
+def _diagnostics(report: CheckReport) -> Arr[DisplayText]:
+    located: list[Diagnostic] = [
+        *(
+            Diagnostic(
+                filename=v.filename, line=v.line, column=v.column, text=_message(v)
+            )
+            for v in report.violations
+        ),
+        *(
+            Diagnostic(
+                filename=e.filename,
+                line=e.line,
+                column=e.column,
+                text=DisplayText(e.message.root),
+            )
+            for e in report.errors
+        ),
     ]
+    return Arr(sorted(located)).map(Diagnostic.rendered)
 
 
 def _resolve_config(allow: AllowedNames, deny: DeniedNames) -> CheckConfig:
@@ -121,24 +172,26 @@ def _resolve_config(allow: AllowedNames, deny: DeniedNames) -> CheckConfig:
     return CheckConfig(denied=DeniedTypes((default - set(allow.root)) | set(deny.root)))
 
 
+# Typer derives the command-line interface from these annotations: a RootModel here
+# would be parsed as one opaque argument, losing the flag names and the arity.
 @app.command()
 def check(
-    paths: Annotated[
+    paths: Annotated[  # noprim: ignore
         list[Path] | None, typer.Argument(help="Files or directories to check.")
     ] = None,
-    allow: Annotated[
+    allow: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option("--allow", help="Remove a type from the deny-list. Repeatable."),
     ] = None,
-    deny: Annotated[
+    deny: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option("--deny", help="Add a type to the deny-list. Repeatable."),
     ] = None,
-    exclude: Annotated[
+    exclude: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option("--exclude", help="Glob to skip while walking. Repeatable."),
     ] = None,
-    quiet: Annotated[
+    quiet: Annotated[  # noprim: ignore
         bool, typer.Option("--quiet", "-q", help="Suppress the summary.")
     ] = False,
 ) -> None:
@@ -163,18 +216,21 @@ def check(
                 source=source,
             ),
         )
-    except OSError as error:
+
+    # A directory can vanish between being listed and being walked, which surfaces
+    # as ExistingDirectory failing to validate rather than as an OSError.
+    except (OSError, ValidationError) as error:
         typer.echo(f"error: {error}", err=True)
         raise typer.Exit(2) from error
     elapsed = Duration(perf_counter() - started)
 
-    diagnostics = _diagnostics(report)
+    diagnostics = _diagnostics(report).to_list()
     for line in diagnostics:
-        typer.echo(line)
+        typer.echo(str(line))
 
     if not quiet:
         typer.echo(
-            f"Checked {_plural(Count(report.files_checked), Noun('file'))} "
+            f"Checked {_plural(Count(report.files_checked.root), Noun('file'))} "
             f"in {pretty_duration(elapsed)} - {_found(report)}",
             err=True,
         )
