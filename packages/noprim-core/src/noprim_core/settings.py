@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Self
 
 import pathspec
@@ -7,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, RootModel, model_validator
 from noprim_core.config import (
     CheckConfig,
     DeniedTypes,
-    IgnoredNames,
+    NamePatterns,
     TopTypes,
 )
 from noprim_core.rules.code import Selection, Selectors
@@ -99,9 +100,23 @@ def _alias(name: str) -> str:  # noprim: ignore
 _SCHEMA = ConfigDict(extra="forbid", populate_by_name=True, alias_generator=_alias)
 
 
-class PathOverride(BaseModel):
+# The keys that name symbols rather than types, shared by the top level and by an
+# override. ignore-names predates the split and stays the way to say both at once.
+class NameKeys(BaseModel):
     model_config = _SCHEMA
 
+    ignore_names: NamePatterns = NamePatterns(())
+    ignore_param_names: NamePatterns = NamePatterns(())
+    ignore_attribute_names: NamePatterns = NamePatterns(())
+
+    def parameter_names(self) -> NamePatterns:
+        return self.ignore_names.joined(self.ignore_param_names)
+
+    def attribute_names(self) -> NamePatterns:
+        return self.ignore_names.joined(self.ignore_attribute_names)
+
+
+class PathOverride(NameKeys):
     paths: PathPatterns
     allow: AllowedNames = AllowedNames(())
     deny: DeniedNames = DeniedNames(())
@@ -121,19 +136,28 @@ class PathOverrides(RootModel[tuple[PathOverride, ...]]):
             tuple(Arr(self.root).filter(lambda override: override.matches(path)))
         )
 
+    def _gathered[T](
+        self, key: Callable[[PathOverride], tuple[T, ...]]
+    ) -> tuple[T, ...]:
+        return tuple(Arr(self.root).map(key).flatten())
+
     def allowed(self) -> AllowedNames:
-        return AllowedNames(
-            tuple(Arr(self.root).map(lambda override: override.allow.root).flatten())
-        )
+        return AllowedNames(self._gathered(lambda override: override.allow.root))
 
     def denied(self) -> DeniedNames:
-        return DeniedNames(
-            tuple(Arr(self.root).map(lambda override: override.deny.root).flatten())
-        )
+        return DeniedNames(self._gathered(lambda override: override.deny.root))
 
     def ignored(self) -> Selectors:
-        return Selectors(
-            tuple(Arr(self.root).map(lambda override: override.ignore.root).flatten())
+        return Selectors(self._gathered(lambda override: override.ignore.root))
+
+    def parameter_names(self) -> NamePatterns:
+        return NamePatterns(
+            self._gathered(lambda override: override.parameter_names().root)
+        )
+
+    def attribute_names(self) -> NamePatterns:
+        return NamePatterns(
+            self._gathered(lambda override: override.attribute_names().root)
         )
 
 
@@ -147,13 +171,10 @@ def _validated_entry(override: PathOverride, denied: DeniedTypes) -> None:
         raise PerPathError(override.paths, error) from error
 
 
-class Settings(BaseModel):
-    model_config = _SCHEMA
-
+class Settings(NameKeys):
     allow: AllowedNames = AllowedNames(())
     deny: DeniedNames = DeniedNames(())
     exclude: PathPatterns = PathPatterns(())
-    ignore_names: IgnoredNames = IgnoredNames(frozenset())
     preset: Preset = Preset.DEFAULT
     # None, not an empty tuple: unset means the preset's rules, not no rules.
     select: Selectors | None = None
@@ -189,5 +210,10 @@ class Settings(BaseModel):
         return CheckConfig(
             selection=self._selection(matching),
             denied=_adjusted(self._top_level(), matching.allowed(), matching.denied()),
-            ignored_names=self.ignore_names,
+            ignored_parameter_names=self.parameter_names().joined(
+                matching.parameter_names()
+            ),
+            ignored_attribute_names=self.attribute_names().joined(
+                matching.attribute_names()
+            ),
         )

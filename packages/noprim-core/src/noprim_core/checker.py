@@ -230,7 +230,8 @@ def _suppressions(
     return Suppressions(
         file=IgnoredFile.parse(tokens),
         lines=IgnoredLines.parse(tokens),
-        names=config.ignored_names,
+        parameter_names=config.ignored_parameter_names,
+        attribute_names=config.ignored_attribute_names,
         pytest_owned=PytestOwned(
             frozenset(
                 sites.filter(lambda site: site.owner == Owner.PYTEST).map(

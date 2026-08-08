@@ -3,7 +3,7 @@ from collections.abc import Callable
 import pytest
 from pydantic import ValidationError
 
-from noprim_core.config import DeniedTypes
+from noprim_core.config import DeniedTypes, NamePatterns
 from noprim_core.rules.code import RuleCode, Selector, Selectors
 from noprim_core.rules.preset import Preset
 from noprim_core.rules.registry import (
@@ -23,6 +23,7 @@ from noprim_core.settings import (
     RelativePath,
     Settings,
 )
+from noprim_core.site import Qualname
 from noprim_core.verdict import Verdict
 
 _ANY = RelativePath("a.py")
@@ -138,6 +139,63 @@ def test_an_override_can_relax_a_top_level_deny() -> None:
     )
     assert "Enum" not in settings.resolve(RelativePath("legacy/a.py")).denied.root
     assert "Enum" in settings.resolve(RelativePath("domain/a.py")).denied.root
+
+
+def test_ignore_names_fills_both_surfaces() -> None:
+    resolved = Settings(ignore_names=NamePatterns(("value",))).resolve(_ANY)
+    assert resolved.ignored_parameter_names.matches(Qualname("value"))
+    assert resolved.ignored_attribute_names.matches(Qualname("value"))
+
+
+def test_each_surface_keeps_its_own_names() -> None:
+    resolved = Settings(
+        ignore_param_names=NamePatterns(("value",)),
+        ignore_attribute_names=NamePatterns(("size",)),
+    ).resolve(_ANY)
+    assert resolved.ignored_parameter_names.matches(Qualname("value"))
+    assert not resolved.ignored_parameter_names.matches(Qualname("size"))
+    assert resolved.ignored_attribute_names.matches(Qualname("size"))
+    assert not resolved.ignored_attribute_names.matches(Qualname("value"))
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        PathOverride(
+            paths=PathPatterns(("django_app/**",)),
+            ignore_param_names=NamePatterns(("name",)),
+        ),
+        PathOverride(
+            paths=PathPatterns(("django_app/**",)), ignore_names=NamePatterns(("name",))
+        ),
+    ],
+)
+def test_an_override_ignores_names_for_the_paths_it_matches(
+    override: PathOverride,
+) -> None:
+    settings = Settings(per_path=(override,))
+    inside = settings.resolve(RelativePath("django_app/a.py"))
+    outside = settings.resolve(RelativePath("domain/a.py"))
+    assert inside.ignored_parameter_names.matches(Qualname("name"))
+    assert not outside.ignored_parameter_names.matches(Qualname("name"))
+
+
+def test_an_override_can_re_include_a_name_the_top_level_ignored() -> None:
+    settings = Settings(
+        ignore_param_names=NamePatterns(("value",)),
+        per_path=(
+            PathOverride(
+                paths=PathPatterns(("domain/**",)),
+                ignore_param_names=NamePatterns(("!value",)),
+            ),
+        ),
+    )
+    assert not settings.resolve(
+        RelativePath("domain/a.py")
+    ).ignored_parameter_names.matches(Qualname("value"))
+    assert settings.resolve(
+        RelativePath("django_app/a.py")
+    ).ignored_parameter_names.matches(Qualname("value"))
 
 
 def test_an_override_can_ignore_a_rule_for_the_paths_it_matches() -> None:

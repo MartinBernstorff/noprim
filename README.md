@@ -118,8 +118,21 @@ name instead:
 noprim check --ignore-names kwargs --ignore-names size .
 ```
 
-Names are matched on parameters and attributes only; a return type carries the
-function's name, not one of its own, so it is never skipped this way.
+`--ignore-param-names` and `--ignore-attribute-names` narrow that to one surface each,
+and `--ignore-names` is the pair of them at once. The split matters where a framework
+dictates a name on one surface but not the other: `django-filter` hooks take `name` and
+`value` as parameters, while a class attribute called `value` is the finding it looks
+like.
+
+```
+noprim check --ignore-param-names name --ignore-param-names value .
+```
+
+Every one of them matches gitignore-style globs as well as exact names, so
+`--ignore-param-names '*_contains'` covers a whole family. A skipped name is skipped for
+every rule on that surface, not just the primitive one — the point is that the name was
+never yours to choose. A return type carries the function's name, not one of its own, so
+it is never skipped this way.
 
 ## Flags
 
@@ -131,7 +144,9 @@ function's name, not one of its own, so it is never skipped this way.
 | `--select CODE` | Run these rule codes instead of the defaults. Prefixes count. Repeatable. |
 | `--extend-select CODE` | Run these rule codes as well as the selected ones. Repeatable. |
 | `--ignore CODE` | Drop these rule codes from the run. Repeatable. |
-| `--ignore-names NAME` | Skip parameters and attributes called `NAME`. Repeatable. |
+| `--ignore-names GLOB` | Skip parameters and attributes matching `GLOB`. Repeatable. |
+| `--ignore-param-names GLOB` | Skip parameters matching `GLOB`. Repeatable. |
+| `--ignore-attribute-names GLOB` | Skip attributes matching `GLOB`. Repeatable. |
 | `--exclude GLOB` | Skip paths while walking. Gitignore syntax, anchored at the config file's directory, or the repo root when there is no config. Repeatable. |
 | `--quiet`, `-q` | Suppress the trailing summary. |
 
@@ -150,6 +165,8 @@ allow = ["str"]
 deny = ["Enum"]
 exclude = ["generated/**"]
 ignore-names = ["kwargs", "size"]
+ignore-param-names = ["value", "*_contains"]
+ignore-attribute-names = ["_*"]
 preset = "all"
 extend-select = ["NOPRIM004"]
 ignore = ["NOPRIM002"]
@@ -173,10 +190,16 @@ deny = ["Enum", "Flag"]
 paths = ["test_infra/**", "django_app/**"]
 allow = ["str", "int", "bool"]
 ignore = ["NOPRIM002"]
+ignore-param-names = ["name", "value"]
 ```
 
-Overrides carry `allow`, `deny` and `ignore`. `exclude` is not among them — it decides
-which files are walked at all, before any path has a config.
+An override's name patterns are appended to the top level's, and gitignore's
+last-match-wins applies across the join — so `ignore-param-names = ["!value"]` in an
+override puts `value` back under the rules for the paths it matches.
+
+Overrides carry `allow`, `deny`, `ignore` and the three `ignore-*-names` keys.
+`exclude` is not among them — it decides which files are walked at all, before any path
+has a config.
 
 Patterns use gitignore syntax, anchored at the directory holding the config, so
 `test_*.py` matches at any depth and `domain/**` does not. A leading `!` re-includes, as

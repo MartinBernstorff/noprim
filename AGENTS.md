@@ -101,8 +101,9 @@ back the same `SuppressedViolation`s and joins the same count.
 ## Settings
 
 The schema (`noprim_core.settings`) is one `Settings` model: `allow`, `deny`,
-`exclude`, and `per-path` overrides. Resolution — unioning every matching override on
-top of the top-level lists into a `CheckConfig` — is pure logic over a relative path,
+`exclude`, the `ignore-*-names` keys it shares with an override through `NameKeys`, and
+`per-path` overrides. Resolution — unioning every matching override on top of the
+top-level lists into a `CheckConfig` — is pure logic over a relative path,
 so it lives in core alongside `pathspec`. `noprim_io.settings` does the I/O half:
 walking up for the file and reading it through `pydantic-settings`' TOML sources.
 
@@ -111,9 +112,26 @@ walking up for the file and reading it through `pydantic-settings`' TOML sources
 `all` exist, because a rule is either on by default or it is not — there is no third
 tier for a `strict` between them to name.
 
-An override carries `allow`, `deny` and `ignore`. `ignore` names rule codes and only
-ever *subtracts* — there is deliberately no per-path `select`, so the top-level
-selection stays the ceiling and `--select NOPRIM001` still means only `NOPRIM001` ran.
+A name-matching key comes in three: `ignore-param-names` and `ignore-attribute-names`
+name one surface each, and `ignore-names` is the pair of them, kept because it predates
+the split. A surface is the axis that matters — a framework dictating `value` as a
+parameter says nothing about a class attribute of that name — and there is no third key
+for returns, which carry the function's name rather than one of their own. All three
+take gitignore patterns rather than exact names, matched by `pathspec` against the
+qualname's leaf, and all three are override keys too.
+
+They suppress by surface, not by code, so ignoring a parameter name silences every rule
+that fires on a parameter — `NOPRIM004` as well as `NOPRIM001`. The author is saying the
+name is not theirs to choose, which is true of the whole annotation or none of it.
+
+An override's patterns are appended to the top level's and compiled as one spec, so
+gitignore's last-match-wins holds across the join: a per-path `!value` re-includes a name
+the top level ignored, which is how a directory says the framework's excuse stops here.
+
+An override carries `allow`, `deny`, `ignore` and the `ignore-*-names` keys. `ignore`
+names rule codes and only ever *subtracts* — there is deliberately no per-path `select`,
+so the top-level selection stays the ceiling and `--select NOPRIM001` still means only
+`NOPRIM001` ran.
 It deselects rather than suppresses: the rule never fires, so nothing reaches
 `Suppressions` and nothing is counted, exactly like the top-level `ignore`.
 
