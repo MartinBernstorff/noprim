@@ -626,6 +626,20 @@ def test_a_flag_replaces_the_same_key_from_the_config(
     assert 'parameter "x" is annotated "str"' in result.stdout
 
 
+def test_the_preset_flag_replaces_the_one_from_the_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _project(ExistingDirectory(tmp_path), ConfigText('preset = "all"\n'))
+    _ = (tmp_path / "a.py").write_text("def is_ready(x: Name) -> bool: ...\n")
+    monkeypatch.chdir(tmp_path)
+
+    under_config = runner.invoke(app, ["check", "a.py"])
+    overridden = runner.invoke(app, ["check", "--preset", "default", "a.py"])
+
+    assert "NOPRIM007" in under_config.stdout
+    assert overridden.stdout.splitlines() == []
+
+
 def test_a_per_path_override_from_the_config_is_applied(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

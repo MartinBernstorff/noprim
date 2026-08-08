@@ -118,7 +118,7 @@ def check(  # noqa: PLR0913, PLR0917
         list[str] | None,
         typer.Option("--exclude", help="Glob to skip while walking. Repeatable."),
     ] = None,
-    preset: Annotated[  # noprim: ignore
+    preset: Annotated[
         Preset | None,
         typer.Option(
             "--preset",

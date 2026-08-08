@@ -7,7 +7,6 @@ from noprim_core.config import DeniedTypes
 from noprim_core.rules.code import RuleCode, Selector, Selectors
 from noprim_core.rules.preset import Preset
 from noprim_core.rules.registry import (
-    RULES,
     UnknownSelectorError,
     default_selection,
     preset_selection,
@@ -49,12 +48,7 @@ def test_defaults_resolve_to_the_default_selection() -> None:
     assert Settings().resolve(_ANY).selection == default_selection()
 
 
-def test_the_all_preset_runs_every_rule() -> None:
-    selection = Settings(preset=Preset.ALL).resolve(_ANY).selection
-    assert selection.root == frozenset(rule.code for rule in RULES)
-
-
-def test_a_preset_is_spelled_as_a_string_in_the_config() -> None:
+def test_a_preset_is_the_base_selection_and_is_spelled_as_a_string() -> None:
     settings = Settings.model_validate({"preset": "all"})
     assert settings.resolve(_ANY).selection == preset_selection(Preset.ALL)
 

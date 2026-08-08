@@ -155,7 +155,7 @@ class Settings(BaseModel):
     exclude: PathPatterns = PathPatterns(())
     ignore_names: IgnoredNames = IgnoredNames(frozenset())
     preset: Preset = Preset.DEFAULT
-    # None, not an empty tuple: unset means the default rules, not no rules.
+    # None, not an empty tuple: unset means the preset's rules, not no rules.
     select: Selectors | None = None
     extend_select: Selectors = Selectors(())
     ignore: Selectors = Selectors(())
