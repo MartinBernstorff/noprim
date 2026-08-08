@@ -16,11 +16,32 @@ The per-package `pyproject.toml` files are **not** distributions — they have n
 
 ## Baselines
 
-`noprim check --baseline .noprim.json` suppresses violations recorded in that file, writing it when it does not yet exist; `--write-baseline` refreshes an existing one. Entries key on `(file, surface, qualname, annotation)` — never a line number — so they survive edits that move code around.
+`noprim check --baseline .noprim.json` suppresses violations recorded in that file, writing it when it does not yet exist; `--write-baseline` refreshes an existing one. Entries key on `(file, code, surface, qualname, annotation)` — never a line number — so they survive edits that move code around. The `code` is what keeps two rules firing on one annotation as two entries; it arrived in baseline version 2, and a version-1 file is rejected with a note to rerun with `--write-baseline`.
 
 **Check the baseline into git.** It is shared debt: a gitignored one means every developer and CI silently suppresses something different.
 
 Once the file exists, a `check` run never writes to disk. Entries that no longer match are ignored and reported on stderr; they are pruned the next time the file is written. Prune candidates are only the files the run actually analysed, plus entries under a checked path whose file is gone — so re-baselining a subdirectory leaves the rest of the file alone, and a file that stopped parsing keeps its entries rather than losing them to a syntax error.
+
+## Rules
+
+A rule is one module under `noprim_core/rules/`, holding its code, its name, whether
+it is on by default, `applies(site, config) -> Verdict` and its message — plus a
+table-driven test beside it over `Site` values. `rules/registry.py` lists them in one
+tuple; adding a rule is a new file and one line there, so two rules being added at
+once touch disjoint files.
+
+Codes number by smell *and* by surface (`NOPRIM001` primitive parameter, `NOPRIM002`
+primitive return, ...), because the surface is the axis people actually want to turn
+off: a codebase can drown in return types while its parameters are fine. Both halves
+are a public commitment — baselines and, later, `# noprim: ignore[NOPRIM002]` encode
+them.
+
+The pipeline is: walk to `Site`s, drop the suppressed ones, then for each site ask
+each selected rule. `Site` carries raw syntactic facts only — no rule-specific
+booleans. Anything the author does not choose (dunder methods, `RootModel` bodies,
+overload implementations, pytest test and fixture parameters) is exempt during the
+walk and never becomes a site; `# noprim: ignore` and `ignore-names` drop sites before
+the rules run. Neither is a rule.
 
 ## Settings
 

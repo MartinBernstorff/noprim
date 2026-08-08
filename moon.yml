@@ -80,7 +80,7 @@ tasks:
 
   # Dogfooding: every rule on, no --allow flags.
   noprim:
-    script: 'uv run noprim check --top-types .'
+    script: 'uv run noprim check --select NOPRIM .'
     inputs:
       - '@group(sources)'
       - '@group(manifests)'

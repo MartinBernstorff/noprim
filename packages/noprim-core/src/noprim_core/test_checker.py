@@ -1,24 +1,25 @@
 import pytest
 from iterpy import Arr
 
-from noprim_core.checker import (
-    CheckConfig,
-    DeniedTypes,
-    Filename,
-    IgnoredNames,
-    SourceCode,
-    Surface,
-    Violation,
-    check_source,
-)
-from noprim_core.verdict import Verdict
+from noprim_core.checker import SourceCode, check_source
+from noprim_core.config import CheckConfig, IgnoredNames
+from noprim_core.rules.code import Selector, Selectors
+from noprim_core.rules.registry import default_selection, selection
+from noprim_core.site import Filename, Surface
+from noprim_core.violation import Violation
+
+
+def _config() -> CheckConfig:
+    return CheckConfig(selection=default_selection())
+
+
+def _selecting(codes: Selectors) -> CheckConfig:
+    return CheckConfig(selection=selection(codes, Selectors(())))
 
 
 def _check(source: SourceCode, config: CheckConfig | None = None) -> Arr[Violation]:
     return check_source(
-        source,
-        Filename("a.py"),
-        config if config is not None else CheckConfig(),
+        source, Filename("a.py"), config if config is not None else _config()
     )
 
 
@@ -27,6 +28,30 @@ def test_flags_primitive_parameter() -> None:
     assert [v.qualname.root for v in violations] == ["greet.name"]
     assert violations[0].annotation.root == "str"
     assert violations[0].surface == Surface.PARAMETER
+
+
+def test_stamps_each_violation_with_the_rule_that_fired() -> None:
+    violations = _check(
+        SourceCode("class Thing:\n    def m(self, y: int) -> str:\n        ...\n")
+    )
+    assert [v.code.root for v in violations] == ["NOPRIM001", "NOPRIM002"]
+
+
+def test_an_attribute_carries_the_attribute_rule() -> None:
+    violations = _check(SourceCode("class Thing:\n    count: int\n"))
+    assert [v.code.root for v in violations] == ["NOPRIM003"]
+
+
+def test_a_deselected_rule_stops_reporting() -> None:
+    config = _selecting(Selectors((Selector("NOPRIM001"),)))
+    violations = _check(SourceCode("def f(x: int) -> str: ...\n"), config)
+    assert [v.qualname.root for v in violations] == ["f.x"]
+
+
+def test_two_rules_can_fire_on_one_annotation() -> None:
+    config = _selecting(Selectors((Selector("NOPRIM"),)))
+    violations = _check(SourceCode("def f(x: dict[str, Any]) -> None: ...\n"), config)
+    assert [v.code.root for v in violations] == ["NOPRIM001", "NOPRIM004"]
 
 
 def test_locates_violations_at_the_annotation() -> None:
@@ -50,25 +75,12 @@ def test_flags_primitive_return() -> None:
     ]
 
 
-def test_exempts_predicate_return() -> None:
+def test_predicates_are_not_reported_by_default() -> None:
     assert list(_check(SourceCode("def is_ready(x: Name) -> bool: ...\n"))) == []
 
 
-@pytest.mark.parametrize(
-    ("source", "expected"),
-    [
-        ("def f(flag: bool) -> None: ...\n", ["f.flag"]),
-        ("class Thing:\n    ready: bool\n", ["Thing.ready"]),
-    ],
-)
-def test_predicate_exemption_covers_only_returns(
-    source: str, expected: list[str]
-) -> None:
-    assert [v.qualname.root for v in _check(SourceCode(source))] == expected
-
-
-def test_checking_predicates_reports_bool_returns() -> None:
-    config = CheckConfig(check_predicates=Verdict(root=True))
+def test_selecting_the_predicate_rule_reports_bool_returns() -> None:
+    config = _selecting(Selectors((Selector("NOPRIM007"),)))
     violations = _check(SourceCode("def is_ready(x: Name) -> bool: ...\n"), config)
     assert [(v.qualname.root, v.surface) for v in violations] == [
         ("is_ready", Surface.RETURN)
@@ -112,59 +124,6 @@ def test_flags_primitive_class_attribute(base: str, annotation: str) -> None:
 )
 def test_ignores_annotations_outside_class_bodies(source: str) -> None:
     assert list(_check(SourceCode(source))) == []
-
-
-@pytest.mark.parametrize(
-    "annotation",
-    [
-        "int",
-        "str",
-        "float",
-        "bool",
-        "bytes",
-        "bytearray",
-        "complex",
-        "Path",
-        "PurePath",
-        "UUID",
-        "datetime",
-        "date",
-        "time",
-        "timedelta",
-        "Decimal",
-        "Fraction",
-        "list",
-        "dict",
-        "set",
-        "frozenset",
-        "tuple",
-    ],
-)
-def test_default_deny_list(annotation: str) -> None:
-    violations = _check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"))
-    assert [v.annotation.root for v in violations] == [annotation]
-
-
-@pytest.mark.parametrize("annotation", ["Any", "object"])
-def test_top_types_are_not_denied_by_default(annotation: str) -> None:
-    assert list(_check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"))) == []
-
-
-@pytest.mark.parametrize("annotation", ["Any", "object", "dict[str, Any]"])
-def test_top_types_reported_when_rule_is_enabled(annotation: str) -> None:
-    config = CheckConfig(top_types=Verdict(root=True))
-    violations = _check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"), config)
-    assert [v.annotation.root for v in violations] == [annotation]
-
-
-def test_top_types_rule_leaves_the_deny_list_alone() -> None:
-    config = CheckConfig(
-        denied=DeniedTypes(frozenset({"Name"})), top_types=Verdict(root=True)
-    )
-    violations = _check(
-        SourceCode("def f(x: Name, y: Any, z: str) -> None: ...\n"), config
-    )
-    assert [v.qualname.root for v in violations] == ["f.x", "f.y"]
 
 
 @pytest.mark.parametrize(
@@ -258,7 +217,7 @@ def test_exempts_parameters_of_test_functions(filename: str) -> None:
             "def test_walks(tmp_path: Path, expected: list[str]) -> None: ...\n"
         ),
         Filename(filename),
-        CheckConfig(),
+        _config(),
     )
     assert list(violations) == []
 
@@ -270,7 +229,7 @@ def test_exempts_parameters_of_fixtures(decorator: str) -> None:
     violations = check_source(
         SourceCode(f"{decorator}\ndef repo(tmp_path: Path) -> Repo: ...\n"),
         Filename("test_thing.py"),
-        CheckConfig(),
+        _config(),
     )
     assert list(violations) == []
 
@@ -289,7 +248,7 @@ def test_exempts_parameters_of_fixtures(decorator: str) -> None:
 def test_exemption_covers_only_test_function_parameters(
     filename: str, source: str
 ) -> None:
-    violations = check_source(SourceCode(source), Filename(filename), CheckConfig())
+    violations = check_source(SourceCode(source), Filename(filename), _config())
     assert len(list(violations)) == 1
 
 
@@ -298,14 +257,11 @@ def test_private_functions_still_report() -> None:
     assert [v.qualname.root for v in violations] == ["_f.x"]
 
 
-def test_uses_configured_deny_list() -> None:
-    config = CheckConfig(denied=DeniedTypes(frozenset({"Name"})))
-    violations = _check(SourceCode("def f(x: Name, y: str) -> None: ...\n"), config)
-    assert [v.qualname.root for v in violations] == ["f.x"]
-
-
 def test_ignores_configured_symbol_names() -> None:
-    config = CheckConfig(ignored_names=IgnoredNames(frozenset({"kwargs"})))
+    config = CheckConfig(
+        selection=default_selection(),
+        ignored_names=IgnoredNames(frozenset({"kwargs"})),
+    )
     violations = _check(
         SourceCode("def f(x: str, **kwargs: str) -> None: ...\n"), config
     )
@@ -313,7 +269,10 @@ def test_ignores_configured_symbol_names() -> None:
 
 
 def test_ignored_names_leave_return_types_alone() -> None:
-    config = CheckConfig(ignored_names=IgnoredNames(frozenset({"size", "f"})))
+    config = CheckConfig(
+        selection=default_selection(),
+        ignored_names=IgnoredNames(frozenset({"size", "f"})),
+    )
     violations = _check(
         SourceCode("class Thing:\n    size: int\n\ndef f(y: Name) -> str: ...\n"),
         config,

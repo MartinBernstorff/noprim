@@ -67,6 +67,11 @@ def names_in_text(text: AnnotationText) -> TypeNames:
     return TypeNames(frozenset()) if parsed is None else names_in(parsed)
 
 
+def text_is_exactly(text: AnnotationText, name: SymbolName) -> Verdict:
+    parsed = _parse(text)
+    return Verdict(root=False) if parsed is None else is_exactly(parsed, name)
+
+
 def is_exactly(annotation: ast.expr, name: SymbolName) -> Verdict:
     match annotation:
         case ast.Name(id=found) | ast.Attribute(attr=found):

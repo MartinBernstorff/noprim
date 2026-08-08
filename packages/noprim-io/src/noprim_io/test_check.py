@@ -2,8 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from noprim_core.checker import Qualname, Violation
 from noprim_core.settings import PathPatterns, Settings
+from noprim_core.site import Qualname
+from noprim_core.violation import Violation
 from noprim_io.check import (
     CheckPaths,
     DiscoveryConfig,

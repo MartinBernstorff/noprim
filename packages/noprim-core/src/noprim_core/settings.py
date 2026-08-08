@@ -4,12 +4,14 @@ import pathspec
 from iterpy import Arr
 from pydantic import BaseModel, ConfigDict, RootModel, model_validator
 
-from noprim_core.checker import (
+from noprim_core.config import (
     CheckConfig,
     DeniedTypes,
     IgnoredNames,
     TopTypes,
 )
+from noprim_core.rules.code import Selectors
+from noprim_core.rules.registry import selection
 from noprim_core.verdict import Verdict
 
 
@@ -113,12 +115,14 @@ class Settings(BaseModel):
     deny: DeniedNames = DeniedNames(())
     exclude: PathPatterns = PathPatterns(())
     ignore_names: IgnoredNames = IgnoredNames(frozenset())
-    check_predicates: Verdict = Verdict(root=False)
-    top_types: Verdict = Verdict(root=False)
+    # None, not an empty tuple: unset means the default rules, not no rules.
+    select: Selectors | None = None
+    ignore: Selectors = Selectors(())
     per_path: tuple[PathOverride, ...] = ()
 
     @model_validator(mode="after")
     def _names_are_coherent(self) -> Self:
+        _ = selection(self.select, self.ignore)
         _validated(self.allow, self.deny, DeniedTypes.default())
         top_level = self._top_level()
         _ = (
@@ -139,6 +143,7 @@ class Settings(BaseModel):
             .to_list()
         )
         return CheckConfig(
+            selection=selection(self.select, self.ignore),
             denied=_adjusted(
                 top_level,
                 AllowedNames(
@@ -146,7 +151,5 @@ class Settings(BaseModel):
                 ),
                 DeniedNames(tuple(Arr(matching).map(lambda o: o.deny.root).flatten())),
             ),
-            check_predicates=self.check_predicates,
             ignored_names=self.ignore_names,
-            top_types=self.top_types,
         )

@@ -30,9 +30,9 @@ def test_reports_each_surface_ruff_style(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", str(target)])
 
     assert result.stdout.splitlines() == [
-        f'{target}:1:20: parameter "user_id" is annotated "str"',
-        f'{target}:1:28: return type is annotated "int"',
-        f'{target}:3:12: attribute "email" is annotated "str"',
+        f'{target}:1:20: NOPRIM001 parameter "user_id" is annotated "str"',
+        f'{target}:1:28: NOPRIM002 return type is annotated "int"',
+        f'{target}:3:12: NOPRIM003 attribute "email" is annotated "str"',
     ]
 
 
@@ -43,9 +43,9 @@ def test_sorts_diagnostics_by_path_line_and_column(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", str(tmp_path)])
 
     assert result.stdout.splitlines() == [
-        f'{tmp_path / "a.py"}:1:10: parameter "a" is annotated "int"',
-        f'{tmp_path / "a.py"}:1:19: parameter "aa" is annotated "int"',
-        f'{tmp_path / "b.py"}:1:10: parameter "b" is annotated "int"',
+        f'{tmp_path / "a.py"}:1:10: NOPRIM001 parameter "a" is annotated "int"',
+        f'{tmp_path / "a.py"}:1:19: NOPRIM001 parameter "aa" is annotated "int"',
+        f'{tmp_path / "b.py"}:1:10: NOPRIM001 parameter "b" is annotated "int"',
     ]
 
 
@@ -56,7 +56,7 @@ def test_interleaves_file_errors_with_violations(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", str(tmp_path)])
 
     lines = result.stdout.splitlines()
-    assert lines[0].startswith(f"{tmp_path / 'a.py'}:1:10: parameter")
+    assert lines[0].startswith(f"{tmp_path / 'a.py'}:1:10: NOPRIM001 parameter")
     assert lines[1].startswith(f"{tmp_path / 'b.py'}:1:")
     assert "syntax error: " in lines[1]
 
@@ -87,7 +87,7 @@ def test_quiet_hides_the_summary_but_not_the_violations(tmp_path: Path) -> None:
 
     assert result.stderr == ""
     assert result.stdout.splitlines() == [
-        f'{target}:1:10: parameter "a" is annotated "int"'
+        f'{target}:1:10: NOPRIM001 parameter "a" is annotated "int"'
     ]
 
 
@@ -171,12 +171,14 @@ def test_allow_removes_type_from_deny_list(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", "--allow", "int", str(target)])
 
     assert result.stdout.splitlines() == [
-        f'{target}:1:18: return type is annotated "str"'
+        f'{target}:1:18: NOPRIM002 return type is annotated "str"'
     ]
 
 
 @pytest.mark.parametrize("annotation", ["Any", "object"])
-@pytest.mark.parametrize(("flags", "expected"), [([], 0), (["--top-types"], 1)])
+@pytest.mark.parametrize(
+    ("flags", "expected"), [([], 0), (["--select", "NOPRIM004"], 1)]
+)
 def test_top_types_are_reported_only_when_opted_into(
     tmp_path: Path, annotation: str, flags: list[str], expected: int
 ) -> None:
@@ -191,7 +193,7 @@ def test_top_types_are_reported_only_when_opted_into(
     )
 
 
-@pytest.mark.parametrize("flags", [[], ["--top-types"]])
+@pytest.mark.parametrize("flags", [[], ["--select", "NOPRIM004"]])
 def test_allow_of_a_top_type_exits_two(tmp_path: Path, flags: list[str]) -> None:
     target = tmp_path / "bad.py"
     _ = target.write_text("def f(x: Any) -> None: ...\n")
@@ -221,12 +223,46 @@ def test_predicates_are_skipped_until_asked_for(tmp_path: Path) -> None:
     _ = target.write_text("def is_ready(x: Name) -> bool: ...\n")
 
     skipped = runner.invoke(app, ["check", str(target)])
-    checked = runner.invoke(app, ["check", "--check-predicates", str(target)])
+    checked = runner.invoke(app, ["check", "--select", "NOPRIM007", str(target)])
 
     assert skipped.stdout.splitlines() == []
     assert checked.stdout.splitlines() == [
-        f'{target}:1:26: return type is annotated "bool"'
+        f'{target}:1:26: NOPRIM007 return type is annotated "bool"'
     ]
+
+
+def test_ignore_drops_a_rule_from_the_run(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(x: int) -> str: ...\n")
+
+    result = runner.invoke(app, ["check", "--ignore", "NOPRIM002", str(target)])
+
+    assert result.stdout.splitlines() == [
+        f'{target}:1:10: NOPRIM001 parameter "x" is annotated "int"'
+    ]
+
+
+def test_a_selector_prefix_turns_on_every_rule(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def is_ready(x: Any) -> bool: ...\n")
+
+    result = runner.invoke(app, ["check", "--select", "NOPRIM", str(target)])
+
+    assert result.stdout.splitlines() == [
+        f'{target}:1:17: NOPRIM004 parameter "x" is annotated "Any"',
+        f'{target}:1:25: NOPRIM007 return type is annotated "bool"',
+    ]
+
+
+@pytest.mark.parametrize("flag", ["--select", "--ignore"])
+def test_a_selector_matching_no_rule_exits_two(tmp_path: Path, flag: str) -> None:
+    target = tmp_path / "good.py"
+    _ = target.write_text("def f() -> None: ...\n")
+
+    result = runner.invoke(app, ["check", flag, "NOPRIM999", str(target)])
+
+    assert result.exit_code == 2
+    assert "no rule matches: NOPRIM999" in _plain(DisplayText(result.output)).root
 
 
 def test_ignore_names_skips_symbols_by_name(tmp_path: Path) -> None:
@@ -236,7 +272,7 @@ def test_ignore_names_skips_symbols_by_name(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", "--ignore-names", "kwargs", str(target)])
 
     assert result.stdout.splitlines() == [
-        f'{target}:1:13: parameter "size" is annotated "int"'
+        f'{target}:1:13: NOPRIM001 parameter "size" is annotated "int"'
     ]
 
 
@@ -379,7 +415,7 @@ def test_reports_only_violations_the_baseline_does_not_cover(tmp_path: Path) -> 
 
     assert result.exit_code == 1
     assert result.stdout.splitlines() == [
-        f'{target}:2:10: parameter "b" is annotated "str"'
+        f'{target}:2:10: NOPRIM001 parameter "b" is annotated "str"'
     ]
     assert "found 1 violation, 1 suppressed by baseline" in result.stderr
 
@@ -610,23 +646,27 @@ def test_a_rule_key_can_come_from_the_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / ".git").mkdir()
-    _ = (tmp_path / "noprim.toml").write_text("top-types = true\n")
+    _ = (tmp_path / "noprim.toml").write_text('select = ["NOPRIM004"]\n')
     _ = (tmp_path / "a.py").write_text("def f(x: Any) -> None: ...\n")
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ["check", "a.py"])
 
-    assert result.stdout.splitlines() == ['a.py:1:10: parameter "x" is annotated "Any"']
+    assert result.stdout.splitlines() == [
+        'a.py:1:10: NOPRIM004 parameter "x" is annotated "Any"'
+    ]
 
 
-def test_a_boolean_config_key_survives_when_its_flag_is_absent(
+def test_a_config_key_survives_when_a_different_flag_is_passed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / ".git").mkdir()
-    _ = (tmp_path / "noprim.toml").write_text("check-predicates = true\n")
+    _ = (tmp_path / "noprim.toml").write_text('select = ["NOPRIM007"]\n')
     _ = (tmp_path / "a.py").write_text("def is_ready(x: Name) -> bool: ...\n")
     monkeypatch.chdir(tmp_path)
 
-    result = runner.invoke(app, ["check", "--top-types", "a.py"])
+    result = runner.invoke(app, ["check", "--ignore-names", "unused", "a.py"])
 
-    assert result.stdout.splitlines() == ['a.py:1:26: return type is annotated "bool"']
+    assert result.stdout.splitlines() == [
+        'a.py:1:26: NOPRIM007 return type is annotated "bool"'
+    ]

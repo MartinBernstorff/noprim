@@ -7,19 +7,21 @@ from noprim_core.baseline import (
     PrunableFiles,
     apply_baseline,
 )
-from noprim_core.checker import (
+from noprim_core.rules.code import RuleCode
+from noprim_core.site import (
     ColumnNumber,
     Filename,
     LineNumber,
     Qualname,
     Surface,
-    Violation,
 )
+from noprim_core.violation import Violation
 
 
 def _violation(qualname: Qualname, line: LineNumber) -> Violation:
     return Violation(
         filename=Filename("/abs/src/a.py"),
+        code=RuleCode("NOPRIM001"),
         line=line,
         column=ColumnNumber(1),
         surface=Surface.PARAMETER,
@@ -31,6 +33,7 @@ def _violation(qualname: Qualname, line: LineNumber) -> Violation:
 def _key(qualname: Qualname) -> BaselineKey:
     return BaselineKey(
         filename=Filename("src/a.py"),
+        code=RuleCode("NOPRIM001"),
         surface=Surface.PARAMETER,
         qualname=qualname,
         annotation=AnnotationText("str"),
@@ -76,6 +79,7 @@ def test_treats_an_unmatched_entry_in_a_walked_file_as_stale() -> None:
 def test_keeps_entries_for_files_this_run_never_walked() -> None:
     elsewhere = BaselineKey(
         filename=Filename("src/b.py"),
+        code=RuleCode("NOPRIM001"),
         surface=Surface.PARAMETER,
         qualname=Qualname("g.b"),
         annotation=AnnotationText("str"),

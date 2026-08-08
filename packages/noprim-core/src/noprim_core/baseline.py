@@ -2,11 +2,14 @@ from iterpy import Arr
 from pydantic import BaseModel, RootModel
 
 from noprim_core.annotations import AnnotationText
-from noprim_core.checker import Filename, Qualname, Surface, Violation
+from noprim_core.rules.code import RuleCode
+from noprim_core.site import Filename, Qualname, Surface
+from noprim_core.violation import Violation
 
 
 class BaselineKey(BaseModel, frozen=True):
     filename: Filename
+    code: RuleCode
     surface: Surface
     qualname: Qualname
     annotation: AnnotationText
@@ -17,11 +20,13 @@ class BaselineKey(BaseModel, frozen=True):
             self.qualname.root,
             str(self.surface),
             self.annotation.root,
+            self.code.root,
         ) < (
             other.filename.root,
             other.qualname.root,
             str(other.surface),
             other.annotation.root,
+            other.code.root,
         )
 
 

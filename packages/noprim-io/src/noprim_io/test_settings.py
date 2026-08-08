@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import RootModel
 
-from noprim_core.checker import DeniedTypes
+from noprim_core.config import DeniedTypes
 from noprim_core.settings import RelativePath
 from noprim_io.check import CheckPaths, DiscoveryConfig, check_paths
 from noprim_io.paths import ExistingDirectory

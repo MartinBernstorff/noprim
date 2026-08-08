@@ -8,16 +8,13 @@ from iterpy import Arr
 from pydantic import BaseModel, RootModel, ValidationError
 
 from noprim_core.baseline import Baseline, BaselineOutcome, apply_baseline
-from noprim_core.checker import (
-    ColumnNumber,
-    Filename,
-    IgnoredNames,
-    LineNumber,
-    Surface,
-    Violation,
-)
+from noprim_core.config import IgnoredNames
+from noprim_core.rules.code import Selector, Selectors
+from noprim_core.rules.registry import rule_for
 from noprim_core.settings import AllowedNames, DeniedNames, PathPatterns, Settings
+from noprim_core.site import ColumnNumber, Filename, LineNumber
 from noprim_core.verdict import Verdict
+from noprim_core.violation import Violation
 from noprim_io.baseline import (
     BaselinePath,
     MalformedBaselineError,
@@ -88,15 +85,8 @@ def _plural(count: Count, noun: Noun) -> DisplayText:
 
 
 def _message(violation: Violation) -> DisplayText:
-    name = violation.qualname.leaf().root
-    annotation = violation.annotation.root
-    match violation.surface:
-        case Surface.PARAMETER:
-            return DisplayText(f'parameter "{name}" is annotated "{annotation}"')
-        case Surface.RETURN:
-            return DisplayText(f'return type is annotated "{annotation}"')
-        case Surface.ATTRIBUTE:
-            return DisplayText(f'attribute "{name}" is annotated "{annotation}"')
+    rule = rule_for(violation.code)
+    return DisplayText(f"{violation.code.root} {rule.message(violation).root}")
 
 
 def _found(report: CheckReport, suppressed: Count) -> DisplayText:
@@ -159,8 +149,8 @@ class Overrides(BaseModel):
     deny: DeniedNames | None
     exclude: PathPatterns | None
     ignore_names: IgnoredNames | None
-    check_predicates: Verdict | None
-    top_types: Verdict | None
+    select: Selectors | None
+    ignore: Selectors | None
 
 
 def _overridden(loaded: LoadedSettings, overrides: Overrides) -> LoadedSettings:
@@ -174,6 +164,10 @@ def _overridden(loaded: LoadedSettings, overrides: Overrides) -> LoadedSettings:
             "settings": Settings.model_validate(loaded.settings.model_dump() | given)
         }
     )
+
+
+def _selectors(given: list[str] | None) -> Selectors | None:  # noprim: ignore
+    return None if given is None else Selectors(tuple(Arr(given).map(Selector)))
 
 
 def _settings(overrides: Overrides) -> LoadedSettings:
@@ -210,16 +204,19 @@ def check(  # noqa: PLR0913, PLR0917
         list[str] | None,
         typer.Option("--exclude", help="Glob to skip while walking. Repeatable."),
     ] = None,
-    check_predicates: Annotated[  # noprim: ignore
-        bool | None,
+    select: Annotated[  # noprim: ignore
+        list[str] | None,
         typer.Option(
-            "--check-predicates",
-            help="Report functions returning bool instead of skipping them.",
+            "--select",
+            help="Run these rule codes instead of the defaults. Prefixes count."
+            " Repeatable.",
         ),
     ] = None,
-    top_types: Annotated[  # noprim: ignore
-        bool | None,
-        typer.Option("--top-types", help="Also report Any and object. Off by default."),
+    ignore: Annotated[  # noprim: ignore
+        list[str] | None,
+        typer.Option(
+            "--ignore", help="Drop these rule codes from the run. Repeatable."
+        ),
     ] = None,
     baseline: Annotated[  # noprim: ignore
         Path | None,
@@ -248,10 +245,8 @@ def check(  # noqa: PLR0913, PLR0917
                 if ignore_names is not None
                 else None
             ),
-            check_predicates=(
-                Verdict(root=check_predicates) if check_predicates is not None else None
-            ),
-            top_types=Verdict(root=top_types) if top_types is not None else None,
+            select=_selectors(select),
+            ignore=_selectors(ignore),
         )
     )
 
