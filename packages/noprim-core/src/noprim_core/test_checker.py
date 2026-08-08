@@ -201,6 +201,30 @@ def test_exempts_new_type_calls(source: str) -> None:
     assert list(_check(SourceCode(source))) == []
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "class Thing:\n    @override\n    def save(self, force: bool) -> str: ...\n",
+        "class Thing:\n    @typing.override\n    def save(self, force: bool) -> str: ...\n",
+        "class Thing:\n    @typing_extensions.override\n    def save(self, force: bool) -> str: ...\n",
+        "class Thing:\n    @cache\n    @override\n    def save(self, force: bool) -> str: ...\n",
+    ],
+)
+def test_exempts_overriding_methods(source: str) -> None:
+    assert list(_check(SourceCode(source))) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "class Thing:\n    def save(self, force: bool) -> str: ...\n",
+        "class Thing:\n    @override_settings(DEBUG=True)\n    def save(self, force: bool) -> str: ...\n",
+    ],
+)
+def test_checks_methods_without_the_override_decorator(source: str) -> None:
+    assert [v.annotation.root for v in _check(SourceCode(source))] == ["bool", "str"]
+
+
 def test_exempts_overload_implementation() -> None:
     source = "@overload\ndef f(x: Name) -> Name: ...\ndef f(x: object) -> object: ...\n"
     assert list(_check(SourceCode(source))) == []

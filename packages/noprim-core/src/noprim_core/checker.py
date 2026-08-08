@@ -19,10 +19,12 @@ from noprim_core.site import (
 )
 from noprim_core.source import SourceCode
 from noprim_core.suppression import (
+    IgnoredFile,
     IgnoredLines,
     PytestOwned,
     SuppressionOutcome,
     Suppressions,
+    tokens_in,
 )
 from noprim_core.verdict import Verdict
 from noprim_core.violation import Violation
@@ -65,8 +67,8 @@ class OverloadedNames(RootModel[frozenset[str]]):
     pass
 
 
-def _decorated_as_overload(function: Function) -> Verdict:
-    return _mentions(Arr(function.decorator_list), SymbolName("overload"))
+def _decorated_with(function: Function, symbol: SymbolName) -> Verdict:
+    return _mentions(Arr(function.decorator_list), symbol)
 
 
 def _is_dunder(function: Function) -> Verdict:
@@ -75,14 +77,22 @@ def _is_dunder(function: Function) -> Verdict:
 
 def _has_exempt_signature(function: Function, overloaded: OverloadedNames) -> Verdict:
     is_overload_implementation = Verdict(function.name in overloaded.root).and_(
-        _decorated_as_overload(function).negated
+        _decorated_with(function, SymbolName("overload")).negated
     )
-    return _is_dunder(function).or_(is_overload_implementation)
+    return Verdict.any(
+        Arr(
+            [
+                _is_dunder(function),
+                is_overload_implementation,
+                _decorated_with(function, SymbolName("override")),
+            ]
+        )
+    )
 
 
 def _pytest_owns_parameters(function: Function) -> Verdict:
     return Verdict(function.name.startswith("test_")).or_(
-        _mentions(Arr(function.decorator_list), SymbolName("fixture"))
+        _decorated_with(function, SymbolName("fixture"))
     )
 
 
@@ -172,7 +182,8 @@ def _overloaded_names(body: list[ast.stmt]) -> OverloadedNames:
         frozenset(
             node.name
             for node in body
-            if isinstance(node, Function) and _decorated_as_overload(node)
+            if isinstance(node, Function)
+            and _decorated_with(node, SymbolName("overload"))
         )
     )
 
@@ -215,8 +226,10 @@ def _violations_at(
 def _suppressions(
     source: SourceCode, sites: Arr[Site], config: CheckConfig
 ) -> Suppressions:
+    tokens = tokens_in(source)
     return Suppressions(
-        lines=IgnoredLines.parse(source),
+        file=IgnoredFile.parse(tokens),
+        lines=IgnoredLines.parse(tokens),
         parameter_names=config.ignored_parameter_names,
         attribute_names=config.ignored_attribute_names,
         pytest_owned=PytestOwned(

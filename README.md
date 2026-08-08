@@ -71,6 +71,11 @@ Some signatures are not the author's to choose, so noprim does not report them:
 - **Dunder methods.** `__eq__` takes `object` because the data model says so.
 - **`RootModel` subclass bodies.** Wrapping a primitive is the point of the pattern.
 - **Overload implementations.** The stubs above them carry the real types.
+- **Methods decorated `@override`.** A supertype dictated the signature, and the
+  decorator says so in a form the type checker verifies. Matched on the decorator's
+  name — `override`, `typing.override` or `typing_extensions.override` — so the
+  exemption holds however it is imported, and unrelated names like `override_settings`
+  are untouched.
 - **Predicates** — functions returning a bare `bool`. A domain type around the answer
   to a yes-or-no question rarely earns its keep, so `NOPRIM002` leaves them to
   `NOPRIM007`, which is off by default. Only the bare return type is carved out: a
@@ -97,6 +102,13 @@ brackets to suppress just those — `# noprim: ignore[NOPRIM002]`, or
 `# noprim: ignore[NOPRIM001, NOPRIM002]` — and leave the brackets off to suppress
 every rule on the line. A code that no rule answers to suppresses nothing, so check
 the spelling.
+
+A whole module can opt out with `# noprim: ignore-file` in its leading comment block —
+before the first statement, so it reads as a statement about the file rather than about
+a line. It takes the same brackets: `# noprim: ignore-file[NOPRIM002, NOPRIM003]` opts
+out of those two codes and leaves the rest reporting. The file is still checked and its
+violations still join the suppressed count; `exclude` in the config is what stops it
+being read at all.
 
 When a framework dictates the same name everywhere — `factory_boy` hooks take `kwargs`,
 `size`, `create` and `extracted` — suppressing it line by line is busywork. Skip the

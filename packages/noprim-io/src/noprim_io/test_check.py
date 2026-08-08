@@ -4,6 +4,7 @@ import pytest
 
 from noprim_core.settings import PathPatterns, Settings
 from noprim_core.site import Qualname
+from noprim_core.suppression import SuppressionReason
 from noprim_core.violation import Violation
 from noprim_io.check import (
     CheckPaths,
@@ -198,6 +199,36 @@ def test_unparseable_file_is_reported_as_an_error_without_stopping_the_run(
     assert [e.filename.root for e in report.errors] == [str(tmp_path / "broken.py")]
     assert report.errors[0].line.root == 2
     assert report.errors[0].message.root.startswith("syntax error: ")
+
+
+def test_an_ignored_file_is_still_checked_and_its_violations_counted(
+    tmp_path: Path,
+) -> None:
+    _ = (tmp_path / "opted_out.py").write_text(
+        "# noprim: ignore-file\ndef f(a: int) -> str: ...\n"
+    )
+
+    report = check_paths(CheckPaths((tmp_path,)), DiscoveryConfig())
+
+    assert report.violations == ()
+    assert [str(file.root) for file in report.checked] == [
+        str(tmp_path / "opted_out.py")
+    ]
+    assert [s.reason for s in report.suppressed] == [
+        SuppressionReason.FILE_COMMENT,
+        SuppressionReason.FILE_COMMENT,
+    ]
+
+
+def test_an_ignored_file_can_name_the_codes_it_opts_out_of(tmp_path: Path) -> None:
+    _ = (tmp_path / "opted_out.py").write_text(
+        "# noprim: ignore-file[NOPRIM002]\ndef f(a: int) -> str: ...\n"
+    )
+
+    report = check_paths(CheckPaths((tmp_path,)), DiscoveryConfig())
+
+    assert [v.code.root for v in report.violations] == ["NOPRIM001"]
+    assert [s.violation.code.root for s in report.suppressed] == ["NOPRIM002"]
 
 
 def test_reports_the_files_it_walked(tmp_path: Path) -> None:
