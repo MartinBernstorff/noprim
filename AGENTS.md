@@ -225,3 +225,20 @@ Always run tasks through moon, never the tool directly: `moon run :test`, not `p
 
 - Tool settings live in each tool's own file — `ruff.toml`, `pyrefly.toml`, `tach.toml`, `pytest.toml` — **not** in `pyproject.toml`. Keeps config where the tool's docs say to look. Packaging is the exception: `[build-system]` and `[tool.hatch.build.*]` have nowhere else to live.
 - Commits are validated automatically by lefthook pre-commit hooks (`lefthook.yml`). Install with `lefthook install`.
+
+## Releasing
+
+The version is not written down anywhere — `hatch-vcs` derives it from the git tag, and python-semantic-release derives the tag from commit messages. So **the PR title is the release note**, and it must be a [conventional commit](https://www.conventionalcommits.org/):
+
+| Prefix | Effect below 1.0.0 |
+| --- | --- |
+| `fix: …` | patch — `0.3.1` → `0.3.2` |
+| `feat: …` | minor — `0.3.1` → `0.4.0` |
+| `feat!: …` or a `BREAKING CHANGE:` footer | minor, until 1.0.0 (`major_on_zero = false`) |
+| `chore: …`, `docs: …`, `refactor: …`, `test: …`, `ci: …` | no release |
+
+PRs are squash-merged, so the PR title becomes the commit subject on main and is the only thing the parser reads — an individual commit inside the branch is never parsed. Nothing enforces this; a non-conventional title means `release` runs, finds no releasable change, and exits without publishing.
+
+Merging to main runs `ci`; on success, `release` tags, creates the GitHub Release, builds, and publishes to PyPI via trusted publishing (no API token). To cut a release from an unchanged main, dispatch `release` manually.
+
+Publishing requires a trusted publisher registered at [pypi.org/manage/account/publishing](https://pypi.org/manage/account/publishing/) — owner `MartinBernstorff`, repository `noprim`, workflow `release.yml`, no environment. A one-time manual step, since only a logged-in human can do it.

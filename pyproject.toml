@@ -1,6 +1,6 @@
 [project]
 name = "noprim"
-version = "0.1.0"
+dynamic = ["version"]
 requires-python = ">=3.13"
 dependencies = [
     "typer>=0.15",
@@ -16,8 +16,23 @@ noprim = "noprim_cli.main:app"
 # hatchling, not uv_build: uv_build's module-root is a single directory and
 # cannot gather the module dirs under packages/*/src into one wheel.
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+# A clone without tags (a fresh fork, or before the first release) would
+# otherwise fail the build outright rather than produce a placeholder version.
+fallback-version = "0.0.0"
+
+[tool.semantic_release]
+tag_format = "v{version}"
+# Below 1.0.0 a breaking change is a minor bump, not a major one.
+allow_zero_version = true
+major_on_zero = false
+# The release workflow runs `uv build` itself, so that the published artifact is
+# the same one `moon run root:smoke` exercises.
+build = false
 
 [tool.hatch.build.targets.wheel]
 packages = [
