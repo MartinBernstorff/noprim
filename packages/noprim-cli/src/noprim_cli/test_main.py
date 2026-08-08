@@ -118,7 +118,7 @@ def test_a_rule_flag_replaces_its_key_without_dropping_per_path_entries(
     _ = (tmp_path / "legacy" / "a.py").write_text("def f() -> str: ...\n")
     monkeypatch.chdir(tmp_path)
 
-    result = runner.invoke(app, ["check", "--ignore", "NOPRIM007"])
+    result = runner.invoke(app, ["check", "--ignore", "NOPRIM003"])
 
     assert result.exit_code == 0
 

@@ -19,7 +19,6 @@ class PredicateReturn(Rule):
     code = RuleCode("NOPRIM007")
     name = RuleName("predicate-return")
     example = RuleExample("def is_ready() -> bool")
-    # No preset turns predicates on: it is a taste, not a default.
     in_preset: Preset | None = None
 
     @override

@@ -36,7 +36,6 @@ class Rule(Protocol):
     @property
     def example(self) -> RuleExample: ...
 
-    # The smallest preset the rule belongs to; None for a rule no preset turns on.
     @property
     def in_preset(self) -> Preset | None: ...
 

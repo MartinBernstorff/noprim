@@ -66,12 +66,8 @@ def _matches_any(code: RuleCode, selectors: Selectors) -> Verdict:
 
 
 def _selected(selectors: Selectors) -> Selection:
-    return Selection(
-        frozenset(
-            Arr(RULES)
-            .filter(lambda rule: _matches_any(rule.code, selectors))
-            .map(lambda rule: rule.code)
-        )
+    return _selection_of(
+        Arr(RULES).filter(lambda rule: _matches_any(rule.code, selectors))
     )
 
 
