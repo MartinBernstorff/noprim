@@ -122,6 +122,28 @@ def _pytest_owns_parameters(function: Function) -> Verdict:
     )
 
 
+def _attribute_name(decorator: ast.expr) -> SymbolName:
+    match decorator:
+        case ast.Attribute(attr=name):
+            return SymbolName(name)
+        case ast.Call(func=inner):
+            return _attribute_name(inner)
+        case _:
+            return SymbolName("")
+
+
+# Matched on the attribute the app object is asked for, so it holds however that object
+# is named — and a bare `@command`, which typer never spells, stays checked.
+def _typer_owns_parameters(function: Function) -> Verdict:
+    return Verdict(
+        Arr(function.decorator_list)
+        .map(_attribute_name)
+        .filter(lambda name: name.root in {"command", "callback"})
+        .to_list()
+        != []
+    )
+
+
 def _is_pytest_module(filename: Filename) -> Verdict:
     stem = re.sub(r"^.*[/\\]", "", filename.root).removesuffix(".py")
     return Verdict(stem.startswith("test_") or stem.endswith("_test"))
@@ -134,6 +156,8 @@ def _subclasses_root_model(class_def: ast.ClassDef) -> Verdict:
 def _parameter_owner(function: Function, in_pytest_module: Verdict) -> Owner:
     if in_pytest_module.and_(_pytest_owns_parameters(function)):
         return Owner.PYTEST
+    if _typer_owns_parameters(function):
+        return Owner.TYPER
     return Owner.AUTHOR
 
 
@@ -262,6 +286,12 @@ def _suppressions(
             ),
         ),
         pytest_owned=_owned(sites, lambda site: Verdict(site.owner == Owner.PYTEST)),
+        typer_owned=_owned(
+            sites,
+            lambda site: config.exempt_typer_args.and_(
+                Verdict(site.owner == Owner.TYPER)
+            ),
+        ),
     )
 
 

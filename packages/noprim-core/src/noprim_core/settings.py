@@ -186,6 +186,7 @@ class Settings(NameKeys):
     select: Selectors | None = None
     extend_select: Selectors = Selectors(())
     ignore: Selectors = Selectors(())
+    exempt_typer_args: Verdict = Verdict(root=True)
     per_path: PathOverrides = PathOverrides(())
 
     @model_validator(mode="after")
@@ -225,4 +226,5 @@ class Settings(NameKeys):
             ignored_inner_classes=self.ignore_inner_classes.joined(
                 matching.inner_classes()
             ),
+            exempt_typer_args=self.exempt_typer_args,
         )

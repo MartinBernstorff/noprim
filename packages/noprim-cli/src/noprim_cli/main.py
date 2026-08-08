@@ -155,46 +155,53 @@ def _settings(arguments: Arguments) -> LoadedSettings:
 # would be parsed as one opaque argument, losing the flag names and the arity.
 @app.command()
 def check(  # noqa: PLR0913, PLR0917
-    paths: Annotated[  # noprim: ignore
+    paths: Annotated[
         list[Path] | None, typer.Argument(help="Files or directories to check.")
     ] = None,
-    allow: Annotated[  # noprim: ignore
+    allow: Annotated[
         list[str] | None,
         typer.Option("--allow", help="Remove a type from the deny-list. Repeatable."),
     ] = None,
-    deny: Annotated[  # noprim: ignore
+    deny: Annotated[
         list[str] | None,
         typer.Option("--deny", help="Add a type to the deny-list. Repeatable."),
     ] = None,
-    ignore_names: Annotated[  # noprim: ignore
+    ignore_names: Annotated[
         list[str] | None,
         typer.Option(
             "--ignore-names",
             help="Skip parameters and attributes matching this glob. Repeatable.",
         ),
     ] = None,
-    ignore_param_names: Annotated[  # noprim: ignore
+    ignore_param_names: Annotated[
         list[str] | None,
         typer.Option(
             "--ignore-param-names",
             help="Skip parameters matching this glob. Repeatable.",
         ),
     ] = None,
-    ignore_attribute_names: Annotated[  # noprim: ignore
+    ignore_attribute_names: Annotated[
         list[str] | None,
         typer.Option(
             "--ignore-attribute-names",
             help="Skip attributes matching this glob. Repeatable.",
         ),
     ] = None,
-    ignore_inner_classes: Annotated[  # noprim: ignore
+    ignore_inner_classes: Annotated[
         list[str] | None,
         typer.Option(
             "--ignore-inner-classes",
             help="Skip the body of a nested class matching this glob. Repeatable.",
         ),
     ] = None,
-    exclude: Annotated[  # noprim: ignore
+    exempt_typer_args: Annotated[
+        bool | None,
+        typer.Option(
+            "--exempt-typer-args/--no-exempt-typer-args",
+            help="Skip the parameters of a Typer command or callback.",
+        ),
+    ] = None,
+    exclude: Annotated[
         list[str] | None,
         typer.Option("--exclude", help="Glob to skip while walking. Repeatable."),
     ] = None,
@@ -205,7 +212,7 @@ def check(  # noqa: PLR0913, PLR0917
             help="Which rules to start from before select, extend-select and ignore.",
         ),
     ] = None,
-    select: Annotated[  # noprim: ignore
+    select: Annotated[
         list[str] | None,
         typer.Option(
             "--select",
@@ -213,38 +220,38 @@ def check(  # noqa: PLR0913, PLR0917
             " Repeatable.",
         ),
     ] = None,
-    extend_select: Annotated[  # noprim: ignore
+    extend_select: Annotated[
         list[str] | None,
         typer.Option(
             "--extend-select",
             help="Run these rule codes as well as the selected ones. Repeatable.",
         ),
     ] = None,
-    ignore: Annotated[  # noprim: ignore
+    ignore: Annotated[
         list[str] | None,
         typer.Option(
             "--ignore", help="Drop these rule codes from the run. Repeatable."
         ),
     ] = None,
-    baseline: Annotated[  # noprim: ignore
+    baseline: Annotated[
         Path | None,
         typer.Option(
             "--baseline",
             help="Suppress violations recorded in this file, writing it if absent.",
         ),
     ] = None,
-    refresh: Annotated[  # noprim: ignore
+    refresh: Annotated[
         bool,
         typer.Option("--write-baseline", help="Rewrite an existing baseline file."),
     ] = False,
-    quiet: Annotated[  # noprim: ignore
+    quiet: Annotated[
         bool, typer.Option("--quiet", "-q", help="Suppress the summary.")
     ] = False,
-    statistics: Annotated[  # noprim: ignore
+    statistics: Annotated[
         bool,
         typer.Option("--statistics", help="Print counts instead of one line each."),
     ] = False,
-    group_by: Annotated[  # noprim: ignore
+    group_by: Annotated[
         list[str] | None,
         typer.Option(
             "--group-by",

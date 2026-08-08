@@ -21,12 +21,13 @@ class SuppressionReason(StrEnum):
     IGNORED_NAME = "ignored-name"
     INNER_CLASS = "inner-class"
     PYTEST = "pytest"
+    TYPER = "typer"
     BASELINE = "baseline"
 
     def requested(self) -> Verdict:
-        # pytest owning a signature is structural, like a dunder method being exempt.
-        # Counting those alongside the ones the author wrote would swamp them.
-        return Verdict(self != SuppressionReason.PYTEST)
+        # A framework owning a signature is structural, like a dunder method being
+        # exempt. Counting those alongside the ones the author wrote would swamp them.
+        return Verdict(self not in {SuppressionReason.PYTEST, SuppressionReason.TYPER})
 
 
 class SuppressedViolation(BaseModel):
@@ -176,6 +177,7 @@ class Suppressions(BaseModel):
     attribute_names: NamePatterns = NamePatterns(())
     inner_class_owned: OwnedQualnames = OwnedQualnames(frozenset())
     pytest_owned: OwnedQualnames = OwnedQualnames(frozenset())
+    typer_owned: OwnedQualnames = OwnedQualnames(frozenset())
 
     def _patterns_for(self, surface: Surface) -> NamePatterns:
         match surface:
@@ -190,6 +192,15 @@ class Suppressions(BaseModel):
     def _named_as_ignored(self, violation: Violation) -> Verdict:
         return self._patterns_for(violation.surface).matches(violation.qualname.leaf())
 
+    def _owner_reason(self, violation: Violation) -> SuppressionReason | None:
+        if self.inner_class_owned.covers(violation):
+            return SuppressionReason.INNER_CLASS
+        if self.pytest_owned.covers(violation):
+            return SuppressionReason.PYTEST
+        if self.typer_owned.covers(violation):
+            return SuppressionReason.TYPER
+        return None
+
     def reason_for(self, violation: Violation) -> SuppressionReason | None:
         if self.file.covers(violation):
             return SuppressionReason.FILE_COMMENT
@@ -197,11 +208,7 @@ class Suppressions(BaseModel):
             return SuppressionReason.COMMENT
         if self._named_as_ignored(violation):
             return SuppressionReason.IGNORED_NAME
-        if self.inner_class_owned.covers(violation):
-            return SuppressionReason.INNER_CLASS
-        if self.pytest_owned.covers(violation):
-            return SuppressionReason.PYTEST
-        return None
+        return self._owner_reason(violation)
 
     def apply(self, violations: Arr[Violation]) -> SuppressionOutcome:
         judged = violations.map(

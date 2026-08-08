@@ -9,6 +9,7 @@ from noprim_core.rules.registry import default_selection, selection
 from noprim_core.site import Filename, Surface
 from noprim_core.source import SourceCode
 from noprim_core.violation import Violation
+from noprim_types.verdict import Verdict
 
 
 def _config() -> CheckConfig:
@@ -459,4 +460,56 @@ def test_pytest_parameters_are_suppressed_rather_than_never_found() -> None:
 
     assert [s.violation.qualname.root for s in outcome.suppressed] == [
         "test_walks.tmp_path"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("@app.command()\ndef ship(name: str) -> None: ...\n", []),
+        ("@app.command()\ndef ship(force: bool = False) -> None: ...\n", []),
+        (
+            "@app.command()\ndef ship(name: Annotated[str, typer.Option()]) -> None: ...\n",
+            [],
+        ),
+        ("@app.callback()\ndef cli(verbose: bool = False) -> None: ...\n", []),
+        ("@cli.command('ship')\ndef ship(name: str) -> None: ...\n", []),
+        ("@command_runner.run()\ndef ship(name: str) -> None: ...\n", ["ship.name"]),
+        ("@command\ndef ship(name: str) -> None: ...\n", ["ship.name"]),
+        ("@app.command()\ndef ship() -> str: ...\n", ["ship"]),
+        (
+            (
+                "@app.command()\ndef ship(name: str) -> None:\n"
+                "    def inner(raw: str) -> None: ...\n"
+            ),
+            ["ship.inner.raw"],
+        ),
+        ("def _helper(name: str) -> None: ...\n", ["_helper.name"]),
+    ],
+)
+def test_the_typer_exemption_covers_only_a_command_s_parameters(
+    source: str, expected: list[str]
+) -> None:
+    assert [v.qualname.root for v in _check(SourceCode(source))] == expected
+
+
+def test_typer_parameters_report_when_the_exemption_is_off() -> None:
+    config = CheckConfig(
+        selection=default_selection(), exempt_typer_args=Verdict(root=False)
+    )
+    violations = _check(
+        SourceCode("@app.command()\ndef ship(name: str) -> None: ...\n"), config
+    )
+    assert [v.qualname.root for v in violations] == ["ship.name"]
+
+
+def test_typer_parameters_are_suppressed_rather_than_never_found() -> None:
+    outcome = check_source(
+        SourceCode("@app.command()\ndef ship(name: str) -> None: ...\n"),
+        Filename("a.py"),
+        _config(),
+    )
+
+    assert [(s.violation.qualname.root, str(s.reason)) for s in outcome.suppressed] == [
+        ("ship.name", "typer")
     ]

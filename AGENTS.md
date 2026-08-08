@@ -89,6 +89,22 @@ rule-specific booleans. Anything the author does not choose (dunder methods,
 `RootModel` bodies, overload implementations, `@override` methods) is exempt during the
 walk and never becomes a site.
 
+A Typer command's parameters are the framework's rather than the author's — typer reads
+the annotations to build the command line — so `exempt-typer-args` covers them, on by
+default. It suppresses rather than skips, like pytest ownership, because a config key can
+turn it off. It covers every primitive, not just `bool`, even though only `bool` is
+genuinely forced (click decides flag-ness from the annotation being literally `bool`,
+while a `str` can become an enum or a `parser=`): the flag is what a codebase that wants
+to be pushed toward domain types turns off. Only parameters — a command's return type is
+still the author's.
+
+Unlike `@override` it is matched on the *attribute* rather than the name alone —
+`<anything>.command`, never a bare `@command` — because `command` and `callback` are
+names another library could plausibly export, and typer never spells it that way. It
+still misses a module-level `DEPLOY_ENV = Annotated[str, typer.Option(...)]` used as
+`env: DEPLOY_ENV`, but so does every rule: the use site names the alias and the
+definition is an assignment no surface covers.
+
 `@override` is the exemption rather than a list of method names: a name glob cannot tell
 a Django `Model.save` override from a domain `delete()` that should stay checked, and if
 the base method disappears the type checker errors, so the exemption cannot rot. It is
@@ -104,7 +120,7 @@ the enclosing function's name and decorators plus the module's filename — and
 Rules fire unconditionally; `noprim_core.suppression` is the one place that decides
 whether a violation is reported, and returns `(reported, suppressed)` rather than a
 silently shortened list. Each suppressed violation names its `SuppressionReason` —
-`comment`, `file-comment`, `ignored-name`, `inner-class`, `pytest` or `baseline` — so "why was this
+`comment`, `file-comment`, `ignored-name`, `inner-class`, `pytest`, `typer` or `baseline` — so "why was this
 not reported?" has a single answer, and the summary can count them all rather than just
 the baseline's. Suppression is not a rule.
 
@@ -123,9 +139,10 @@ Both comment parsers take a token stream rather than a `SourceCode`, so `tokens_
 once per file and the line-level and file-level readings cannot disagree about what a
 token is.
 
-`SuppressionReason.requested()` is what the summary counts: pytest owning a test or
-fixture signature is structural, like a dunder method being exempt, and counting those
-would swamp the suppressions the author actually wrote. The baseline suppresses later,
+`SuppressionReason.requested()` is what the summary counts: a framework owning a
+signature — pytest's tests and fixtures, typer's commands — is structural, like a dunder
+method being exempt, and counting those would swamp the suppressions the author actually
+wrote. The baseline suppresses later,
 at the CLI, because keying an entry needs a path relative to the repo — but it hands
 back the same `SuppressedViolation`s and joins the same count.
 
