@@ -58,8 +58,7 @@ tasks:
       - '@group(sources)'
       - '@group(manifests)'
 
-  # Dogfooding: the linter is run against its own source, with every rule on and no
-  # --allow flags.
+  # Dogfooding: every rule on, no --allow flags.
   noprim:
     script: 'uv run noprim check --top-types .'
     inputs:

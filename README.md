@@ -33,8 +33,8 @@ The deny-list covers the builtins (`int`, `str`, `float`, `bool`, `bytes`,
 `Any` and `object` are not on it. They are top types, not primitives: they say the
 type is unknown rather than too narrow, and `object` is the right annotation for
 `**kwargs` you never inspect. That is a different smell, so it is its own rule and
-`--top-types` opts into it. `--allow` accepts `Any` and `object` only alongside
-`--top-types`, since otherwise there is nothing to allow.
+`--top-types` opts into it. The rule is all or nothing, so `--allow Any` is an error;
+`--deny Any` still works if you want one of them on the deny-list by itself.
 
 A container matches only when it is bare: `list` is reported, `list[Name]` is not,
 because the annotation names a collection of a type that is already meaningful. It is

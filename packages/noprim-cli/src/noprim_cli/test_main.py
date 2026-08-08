@@ -170,44 +170,44 @@ def test_allow_removes_type_from_deny_list(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("annotation", ["Any", "object"])
-def test_top_types_are_silent_by_default(tmp_path: Path, annotation: str) -> None:
+@pytest.mark.parametrize(("flags", "expected"), [([], 0), (["--top-types"], 1)])
+def test_top_types_are_reported_only_when_opted_into(
+    tmp_path: Path, annotation: str, flags: list[str], expected: int
+) -> None:
     target = tmp_path / "bad.py"
     _ = target.write_text(f"def f(x: {annotation}) -> None: ...\n")
 
-    result = runner.invoke(app, ["check", str(target)])
+    result = runner.invoke(app, ["check", *flags, str(target)])
 
-    assert result.exit_code == 0
-    assert result.stdout == ""
+    assert result.exit_code == expected
+    assert (f'parameter "x" is annotated "{annotation}"' in result.stdout) == (
+        expected == 1
+    )
 
 
-@pytest.mark.parametrize("annotation", ["Any", "object"])
-def test_top_types_flag_reports_them(tmp_path: Path, annotation: str) -> None:
+@pytest.mark.parametrize("flags", [[], ["--top-types"]])
+def test_allow_of_a_top_type_exits_two(tmp_path: Path, flags: list[str]) -> None:
     target = tmp_path / "bad.py"
-    _ = target.write_text(f"def f(x: {annotation}) -> None: ...\n")
+    _ = target.write_text("def f(x: Any) -> None: ...\n")
 
-    result = runner.invoke(app, ["check", "--top-types", str(target)])
+    result = runner.invoke(app, ["check", *flags, "--allow", "Any", str(target)])
 
-    assert result.exit_code == 1
-    assert f'parameter "x" is annotated "{annotation}"' in result.stdout
+    assert result.exit_code == 2
+    assert (
+        "--allow of a type governed by --top-types: Any"
+        in _plain(DisplayText(result.output)).root
+    )
 
 
-def test_allow_of_top_type_needs_the_rule_enabled(tmp_path: Path) -> None:
+def test_deny_of_a_top_type_reports_it_without_the_flag(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
     _ = target.write_text("def f(x: Any, y: object) -> None: ...\n")
 
-    enabled = runner.invoke(
-        app, ["check", "--top-types", "--allow", "Any", str(target)]
-    )
-    disabled = runner.invoke(app, ["check", "--allow", "Any", str(target)])
+    result = runner.invoke(app, ["check", "--deny", "Any", str(target)])
 
-    assert enabled.exit_code == 1
-    assert 'parameter "x"' not in enabled.stdout
-    assert 'parameter "y" is annotated "object"' in enabled.stdout
-    assert disabled.exit_code == 2
-    assert (
-        "--allow of a name that is not on the deny-list: Any"
-        in _plain(DisplayText(disabled.output)).root
-    )
+    assert result.exit_code == 1
+    assert 'parameter "x" is annotated "Any"' in result.stdout
+    assert 'parameter "y"' not in result.stdout
 
 
 def test_deny_adds_type_to_deny_list(tmp_path: Path) -> None:

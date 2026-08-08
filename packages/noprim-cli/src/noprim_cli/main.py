@@ -51,6 +51,14 @@ class NotOnDenyListError(typer.BadParameter):
         )
 
 
+class AllowedTopTypeError(typer.BadParameter):
+    def __init__(self, names: AllowedNames) -> None:
+        super().__init__(
+            f"--allow of a type governed by --top-types: {', '.join(names.root)}. "
+            "Drop --top-types instead; the rule is all or nothing."
+        )
+
+
 app = typer.Typer(no_args_is_help=True)
 
 
@@ -163,20 +171,22 @@ def _diagnostics(report: CheckReport) -> Arr[DisplayText]:
 def _resolve_config(
     allow: AllowedNames, deny: DeniedNames, top_types: Verdict
 ) -> CheckConfig:
-    allowable = DeniedTypes.default().root | (
-        TopTypes.default().root if top_types.root else frozenset[str]()
-    )
+    default = DeniedTypes.default().root
     # "" is the sentinel for unresolvable annotations, so denying it matches everything.
     if "" in set(allow.root) | set(deny.root):
         raise EmptyNameError
     conflicting = sorted(set(allow.root) & set(deny.root))
     if len(conflicting) > 0:
         raise AllowedAndDeniedError(AllowedNames(tuple(conflicting)))
-    unknown = sorted(set(allow.root) - allowable)
+    top = sorted(set(allow.root) & TopTypes.default().root)
+    if len(top) > 0:
+        raise AllowedTopTypeError(AllowedNames(tuple(top)))
+    unknown = sorted(set(allow.root) - default)
     if len(unknown) > 0:
         raise NotOnDenyListError(AllowedNames(tuple(unknown)))
     return CheckConfig(
-        denied=DeniedTypes((allowable - set(allow.root)) | set(deny.root))
+        denied=DeniedTypes((default - set(allow.root)) | set(deny.root)),
+        top_types=top_types,
     )
 
 

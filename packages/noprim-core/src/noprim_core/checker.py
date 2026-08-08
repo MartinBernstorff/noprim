@@ -26,6 +26,11 @@ class Qualname(RootModel[str]):
         return Qualname(self.root.rsplit(".", 1)[-1])
 
 
+class Verdict(RootModel[bool]):
+    def __bool__(self) -> bool:
+        return self.root
+
+
 class DeniedTypes(RootModel[frozenset[str]]):
     @classmethod
     def default(cls) -> "DeniedTypes":
@@ -64,6 +69,18 @@ class TopTypes(RootModel[frozenset[str]]):
         return cls(frozenset({"Any", "object"}))
 
 
+class CheckConfig(BaseModel):
+    denied: DeniedTypes = Field(default_factory=DeniedTypes.default)
+    # A top type says the type is unknown, not that it is too narrow, so it is a
+    # different smell from primitive obsession and is opted into on its own.
+    top_types: Verdict = Field(default_factory=lambda: Verdict(root=False))
+
+    def all_denied(self) -> DeniedTypes:
+        if not self.top_types.root:
+            return self.denied
+        return DeniedTypes(self.denied.root | TopTypes.default().root)
+
+
 class Surface(StrEnum):
     PARAMETER = "parameter"
     RETURN = "return"
@@ -85,15 +102,6 @@ class ColumnNumber(RootModel[int]):
 class TypeNames(RootModel[frozenset[str]]):
     def any_denied(self, denied: DeniedTypes) -> "Verdict":
         return Verdict(len(self.root & denied.root) > 0)
-
-
-class Verdict(RootModel[bool]):
-    def __bool__(self) -> bool:
-        return self.root
-
-
-class CheckConfig(BaseModel):
-    denied: DeniedTypes = Field(default_factory=DeniedTypes.default)
 
 
 class Site(BaseModel):
@@ -343,7 +351,7 @@ def check_source(
     exempt = _is_pytest_module(filename)
     return (
         _sites_in(tree.body, Qualname(""))
-        .filter(lambda site: bool(site.names.any_denied(config.denied)))
+        .filter(lambda site: bool(site.names.any_denied(config.all_denied())))
         .filter(lambda site: not bool(bool(exempt) and site.pytest_owned))
         .filter(lambda site: site.line.root not in ignored.root)
         .map(

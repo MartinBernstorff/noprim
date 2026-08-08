@@ -7,7 +7,7 @@ from noprim_core.checker import (
     Filename,
     SourceCode,
     Surface,
-    TopTypes,
+    Verdict,
     Violation,
     check_source,
 )
@@ -124,11 +124,21 @@ def test_top_types_are_not_denied_by_default(annotation: str) -> None:
     assert list(_check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"))) == []
 
 
-@pytest.mark.parametrize("annotation", ["Any", "object"])
-def test_top_types_reported_when_denied(annotation: str) -> None:
-    config = CheckConfig(denied=DeniedTypes(TopTypes.default().root))
+@pytest.mark.parametrize("annotation", ["Any", "object", "dict[str, Any]"])
+def test_top_types_reported_when_rule_is_enabled(annotation: str) -> None:
+    config = CheckConfig(top_types=Verdict(root=True))
     violations = _check(SourceCode(f"def f(x: {annotation}) -> None: ...\n"), config)
     assert [v.annotation.root for v in violations] == [annotation]
+
+
+def test_top_types_rule_leaves_the_deny_list_alone() -> None:
+    config = CheckConfig(
+        denied=DeniedTypes(frozenset({"Name"})), top_types=Verdict(root=True)
+    )
+    violations = _check(
+        SourceCode("def f(x: Name, y: Any, z: str) -> None: ...\n"), config
+    )
+    assert [v.qualname.root for v in violations] == ["f.x", "f.y"]
 
 
 @pytest.mark.parametrize("annotation", ["datetime.datetime", "dt.datetime"])
