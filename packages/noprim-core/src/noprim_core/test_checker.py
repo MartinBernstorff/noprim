@@ -5,7 +5,7 @@ from noprim_core.checker import check_source
 from noprim_core.config import CheckConfig, NamePatterns
 from noprim_core.rules.code import Selector, Selectors
 from noprim_core.rules.preset import Preset
-from noprim_core.rules.registry import default_selection, selection
+from noprim_core.rules.registry import core_selection, selection
 from noprim_core.site import Filename, Surface
 from noprim_core.source import SourceCode
 from noprim_core.violation import Violation
@@ -13,12 +13,16 @@ from noprim_types.verdict import Verdict
 
 
 def _config() -> CheckConfig:
-    return CheckConfig(selection=default_selection())
+    return CheckConfig(selection=core_selection())
+
+
+def _exempting_typer() -> CheckConfig:
+    return CheckConfig(selection=core_selection(), exempt_typer_args=Verdict(root=True))
 
 
 def _selecting(codes: Selectors) -> CheckConfig:
     return CheckConfig(
-        selection=selection(Preset.DEFAULT, codes, Selectors(()), Selectors(()))
+        selection=selection(Preset.CORE, codes, Selectors(()), Selectors(()))
     )
 
 
@@ -86,7 +90,7 @@ def test_flags_primitive_return() -> None:
     ]
 
 
-def test_predicates_are_not_reported_by_default() -> None:
+def test_predicates_are_outside_the_core_preset() -> None:
     assert list(_check(SourceCode("def is_ready(x: Name) -> bool: ...\n"))) == []
 
 
@@ -294,7 +298,7 @@ def test_private_functions_still_report() -> None:
 
 def test_ignores_configured_symbol_names() -> None:
     config = CheckConfig(
-        selection=default_selection(),
+        selection=core_selection(),
         ignored_parameter_names=NamePatterns(("kwargs",)),
     )
     violations = _check(
@@ -305,7 +309,7 @@ def test_ignores_configured_symbol_names() -> None:
 
 def test_ignored_names_leave_return_types_alone() -> None:
     config = CheckConfig(
-        selection=default_selection(),
+        selection=core_selection(),
         ignored_parameter_names=NamePatterns(("size", "f")),
         ignored_attribute_names=NamePatterns(("size", "f")),
     )
@@ -331,7 +335,7 @@ def test_an_ignored_name_covers_every_rule_on_that_surface() -> None:
 
 def test_a_parameter_and_an_attribute_of_one_name_are_ignored_apart() -> None:
     config = CheckConfig(
-        selection=default_selection(),
+        selection=core_selection(),
         ignored_parameter_names=NamePatterns(("value",)),
     )
     violations = _check(
@@ -354,7 +358,7 @@ class Filter:
 
 def _ignoring_meta() -> CheckConfig:
     return CheckConfig(
-        selection=default_selection(), ignored_inner_classes=NamePatterns(("Meta",))
+        selection=core_selection(), ignored_inner_classes=NamePatterns(("Meta",))
     )
 
 
@@ -365,7 +369,7 @@ def test_ignores_the_body_of_a_configured_inner_class() -> None:
 
 def test_an_inner_class_pattern_takes_a_glob() -> None:
     config = CheckConfig(
-        selection=default_selection(), ignored_inner_classes=NamePatterns(("*Meta",))
+        selection=core_selection(), ignored_inner_classes=NamePatterns(("*Meta",))
     )
     violations = _check(
         SourceCode("class F:\n    class FilterMeta:\n        fields: list[str] = []\n"),
@@ -507,16 +511,14 @@ def test_pytest_parameters_are_suppressed_rather_than_never_found() -> None:
 def test_the_typer_exemption_covers_only_a_command_s_bool_parameters(
     source: str, expected: list[str]
 ) -> None:
-    assert [v.qualname.root for v in _check(SourceCode(source))] == expected
+    assert [
+        v.qualname.root for v in _check(SourceCode(source), _exempting_typer())
+    ] == expected
 
 
 def test_a_typer_bool_reports_when_the_exemption_is_off() -> None:
-    config = CheckConfig(
-        selection=default_selection(), exempt_typer_args=Verdict(root=False)
-    )
     violations = _check(
-        SourceCode("@app.command()\ndef ship(force: bool = False) -> None: ...\n"),
-        config,
+        SourceCode("@app.command()\ndef ship(force: bool = False) -> None: ...\n")
     )
     assert [v.qualname.root for v in violations] == ["ship.force"]
 
@@ -525,7 +527,7 @@ def test_typer_parameters_are_suppressed_rather_than_never_found() -> None:
     outcome = check_source(
         SourceCode("@app.command()\ndef ship(force: bool = False) -> None: ...\n"),
         Filename("a.py"),
-        _config(),
+        _exempting_typer(),
     )
 
     assert [(s.violation.qualname.root, str(s.reason)) for s in outcome.suppressed] == [

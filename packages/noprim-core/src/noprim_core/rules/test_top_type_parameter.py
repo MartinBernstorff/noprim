@@ -2,7 +2,7 @@ import pytest
 
 from noprim_core.annotations import AnnotationText, names_in_text
 from noprim_core.config import CheckConfig, DeniedTypes
-from noprim_core.rules.registry import default_selection
+from noprim_core.rules.registry import core_selection
 from noprim_core.rules.top_type_parameter import TopTypeParameter
 from noprim_core.site import ColumnNumber, LineNumber, Qualname, Site, Surface
 
@@ -19,7 +19,7 @@ def _site(surface: Surface, annotation: AnnotationText) -> Site:
 
 
 def _config() -> CheckConfig:
-    return CheckConfig(selection=default_selection())
+    return CheckConfig(selection=core_selection())
 
 
 @pytest.mark.parametrize(
@@ -57,7 +57,7 @@ def test_leaves_everything_else_alone(surface: Surface, annotation: str) -> None
 
 def test_the_deny_list_does_not_reach_it() -> None:
     config = CheckConfig(
-        selection=default_selection(), denied=DeniedTypes(frozenset({"Name"}))
+        selection=core_selection(), denied=DeniedTypes(frozenset({"Name"}))
     )
     assert (
         TopTypeParameter()
@@ -71,5 +71,5 @@ def test_the_deny_list_does_not_reach_it() -> None:
     )
 
 
-def test_is_off_by_default() -> None:
-    assert not default_selection().contains(TopTypeParameter().code)
+def test_is_outside_the_core_preset() -> None:
+    assert not core_selection().contains(TopTypeParameter().code)

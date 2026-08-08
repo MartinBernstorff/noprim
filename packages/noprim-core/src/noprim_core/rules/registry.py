@@ -41,20 +41,18 @@ def rule_for(code: RuleCode) -> Rule:
     return found[0]
 
 
-def default_selection() -> Selection:
+def core_selection() -> Selection:
     return Selection(
         frozenset(
-            Arr(RULES)
-            .filter(lambda rule: rule.on_by_default)
-            .map(lambda rule: rule.code)
+            Arr(RULES).filter(lambda rule: rule.in_core).map(lambda rule: rule.code)
         )
     )
 
 
 def preset_selection(preset: Preset) -> Selection:
     match preset:
-        case Preset.DEFAULT:
-            return default_selection()
+        case Preset.CORE:
+            return core_selection()
         case Preset.ALL:
             return Selection(frozenset(Arr(RULES).map(lambda rule: rule.code)))
 

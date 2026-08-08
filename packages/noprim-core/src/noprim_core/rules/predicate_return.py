@@ -16,7 +16,7 @@ def returns_a_bare_bool(site: Site) -> Verdict:
 
 class PredicateReturn(Rule):
     code = RuleCode("NOPRIM007")
-    on_by_default = Verdict(root=False)
+    in_core = Verdict(root=False)
 
     @override
     def applies(self, site: Site, config: CheckConfig) -> Verdict:

@@ -12,7 +12,7 @@ from noprim_core.rules.registry import (
     RULES,
     UnknownRuleCodeError,
     UnknownSelectorError,
-    default_selection,
+    core_selection,
     rule_for,
     selection,
 )
@@ -61,40 +61,38 @@ def test_every_code_is_unique() -> None:
     assert len(_every_code().root) == len(RULES)
 
 
-def test_the_defaults_are_the_primitive_rules() -> None:
-    assert default_selection() == Selection(
+def test_the_core_preset_is_the_primitive_rules() -> None:
+    assert core_selection() == Selection(
         frozenset({RuleCode("NOPRIM001"), RuleCode("NOPRIM002"), RuleCode("NOPRIM003")})
     )
 
 
 @pytest.mark.parametrize(
     ("preset", "expected"),
-    [(Preset.DEFAULT, default_selection()), (Preset.ALL, _every_code())],
-    ids=["default", "all"],
+    [(Preset.CORE, core_selection()), (Preset.ALL, _every_code())],
+    ids=["core", "all"],
 )
 def test_a_preset_is_the_base_selection(preset: Preset, expected: Selection) -> None:
     assert selection(preset, None, _nothing(), _nothing()) == expected
 
 
-def test_select_replaces_the_defaults() -> None:
+def test_select_replaces_the_preset() -> None:
     chosen = selection(
-        Preset.DEFAULT, Selectors((Selector("NOPRIM007"),)), _nothing(), _nothing()
+        Preset.CORE, Selectors((Selector("NOPRIM007"),)), _nothing(), _nothing()
     )
     assert chosen == Selection(frozenset({RuleCode("NOPRIM007")}))
 
 
 def test_a_selector_is_a_prefix() -> None:
     assert (
-        selection(
-            Preset.DEFAULT, Selectors((Selector("NOPRIM"),)), _nothing(), _nothing()
-        )
+        selection(Preset.CORE, Selectors((Selector("NOPRIM"),)), _nothing(), _nothing())
         == _every_code()
     )
 
 
-def test_ignore_subtracts_from_the_defaults() -> None:
+def test_ignore_subtracts_from_the_preset() -> None:
     chosen = selection(
-        Preset.DEFAULT, None, _nothing(), Selectors((Selector("NOPRIM002"),))
+        Preset.CORE, None, _nothing(), Selectors((Selector("NOPRIM002"),))
     )
     assert chosen == Selection(
         frozenset({RuleCode("NOPRIM001"), RuleCode("NOPRIM003")})
@@ -103,7 +101,7 @@ def test_ignore_subtracts_from_the_defaults() -> None:
 
 def test_ignore_wins_over_select() -> None:
     chosen = selection(
-        Preset.DEFAULT,
+        Preset.CORE,
         Selectors((Selector("NOPRIM"),)),
         _nothing(),
         Selectors((Selector("NOPRIM00"),)),
@@ -111,9 +109,9 @@ def test_ignore_wins_over_select() -> None:
     assert chosen == Selection(frozenset())
 
 
-def test_extend_select_adds_to_the_defaults() -> None:
+def test_extend_select_adds_to_the_preset() -> None:
     chosen = selection(
-        Preset.DEFAULT, None, Selectors((Selector("NOPRIM004"),)), _nothing()
+        Preset.CORE, None, Selectors((Selector("NOPRIM004"),)), _nothing()
     )
     assert chosen == Selection(
         frozenset(
@@ -140,7 +138,7 @@ def test_a_selector_that_names_no_rule_is_rejected(
     select: Selectors | None, extend: Selectors, ignore: Selectors
 ) -> None:
     with pytest.raises(UnknownSelectorError):
-        _ = selection(Preset.DEFAULT, select, extend, ignore)
+        _ = selection(Preset.CORE, select, extend, ignore)
 
 
 def test_rule_for_finds_the_rule_that_owns_a_code() -> None:

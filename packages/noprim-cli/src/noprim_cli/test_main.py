@@ -155,10 +155,8 @@ def test_allow_removes_type_from_deny_list(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("annotation", ["Any", "object"])
-@pytest.mark.parametrize(
-    ("flags", "expected"), [([], 0), (["--select", "NOPRIM004"], 1)]
-)
-def test_top_types_are_reported_only_when_opted_into(
+@pytest.mark.parametrize(("flags", "expected"), [([], 1), (["--preset", "core"], 0)])
+def test_top_types_are_reported_until_deselected(
     tmp_path: Path, annotation: str, flags: list[str], expected: int
 ) -> None:
     target = tmp_path / "bad.py"
@@ -190,19 +188,21 @@ def test_deny_of_a_top_type_reports_it_without_the_flag(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
     _ = target.write_text("def f(x: Any, y: object) -> None: ...\n")
 
-    result = runner.invoke(app, ["check", "--deny", "Any", str(target)])
+    result = runner.invoke(
+        app, ["check", "--preset", "core", "--deny", "Any", str(target)]
+    )
 
     assert result.exit_code == 1
     assert 'parameter "x" is annotated "Any"' in result.stdout
     assert 'parameter "y"' not in result.stdout
 
 
-def test_predicates_are_skipped_until_asked_for(tmp_path: Path) -> None:
+def test_predicates_are_reported_until_deselected(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
     _ = target.write_text("def is_ready(x: Name) -> bool: ...\n")
 
-    skipped = runner.invoke(app, ["check", str(target)])
-    checked = runner.invoke(app, ["check", "--select", "NOPRIM007", str(target)])
+    skipped = runner.invoke(app, ["check", "--preset", "core", str(target)])
+    checked = runner.invoke(app, ["check", str(target)])
 
     assert skipped.stdout.splitlines() == []
     assert checked.stdout.splitlines() == [
@@ -233,11 +233,11 @@ def test_a_selector_prefix_turns_on_every_rule(tmp_path: Path) -> None:
     ]
 
 
-def test_the_all_preset_turns_on_every_rule(tmp_path: Path) -> None:
+def test_every_rule_runs_without_a_preset(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
     _ = target.write_text("def is_ready(x: Any) -> bool: ...\n")
 
-    result = runner.invoke(app, ["check", "--preset", "all", str(target)])
+    result = runner.invoke(app, ["check", str(target)])
 
     assert result.stdout.splitlines() == [
         f'{target}:1:17: NOPRIM004 parameter "x" is annotated "Any"',
@@ -258,11 +258,14 @@ def test_ignore_subtracts_from_the_all_preset(tmp_path: Path) -> None:
     ]
 
 
-def test_extend_select_adds_a_rule_to_the_defaults(tmp_path: Path) -> None:
+def test_extend_select_adds_a_rule_to_the_preset(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
     _ = target.write_text("def f(x: Any, y: int) -> None: ...\n")
 
-    result = runner.invoke(app, ["check", "--extend-select", "NOPRIM004", str(target)])
+    result = runner.invoke(
+        app,
+        ["check", "--preset", "core", "--extend-select", "NOPRIM004", str(target)],
+    )
 
     assert result.stdout.splitlines() == [
         f'{target}:1:10: NOPRIM004 parameter "x" is annotated "Any"',
@@ -674,15 +677,15 @@ def test_a_flag_replaces_the_same_key_from_the_config(
 def test_the_preset_flag_replaces_the_one_from_the_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _project(ExistingDirectory(tmp_path), ConfigText('preset = "all"\n'))
+    _project(ExistingDirectory(tmp_path), ConfigText('preset = "core"\n'))
     _ = (tmp_path / "a.py").write_text("def is_ready(x: Name) -> bool: ...\n")
     monkeypatch.chdir(tmp_path)
 
     under_config = runner.invoke(app, ["check", "a.py"])
-    overridden = runner.invoke(app, ["check", "--preset", "default", "a.py"])
+    overridden = runner.invoke(app, ["check", "--preset", "all", "a.py"])
 
-    assert "NOPRIM007" in under_config.stdout
-    assert overridden.stdout.splitlines() == []
+    assert under_config.stdout.splitlines() == []
+    assert "NOPRIM007" in overridden.stdout
 
 
 def test_a_per_path_override_from_the_config_is_applied(
@@ -947,11 +950,22 @@ def test_a_config_key_survives_when_a_different_flag_is_passed(
 _COMMAND = "@app.command()\ndef ship(force: bool = False) -> None: ...\n"
 
 
-def test_a_typer_bool_is_exempt_by_default(tmp_path: Path) -> None:
+def test_a_typer_bool_is_reported_by_default(tmp_path: Path) -> None:
     target = tmp_path / "cli.py"
     _ = target.write_text(_COMMAND)
 
-    result = runner.invoke(app, ["check", str(target)])
+    result = runner.invoke(app, ["check", "-q", str(target)])
+
+    assert result.stdout.splitlines() == [
+        f'{target}:2:17: NOPRIM001 parameter "force" is annotated "bool"'
+    ]
+
+
+def test_an_exempted_typer_bool_stays_out_of_the_count(tmp_path: Path) -> None:
+    target = tmp_path / "cli.py"
+    _ = target.write_text(_COMMAND)
+
+    result = runner.invoke(app, ["check", "--exempt-typer-args", str(target)])
 
     assert result.stdout.splitlines() == []
     # A framework owning the signature is structural, so it stays out of the count.
@@ -975,40 +989,29 @@ def test_a_typer_parameter_that_is_not_a_bool_says_what_to_use_instead(
     ]
 
 
-def test_no_exempt_typer_args_reports_a_command_s_bool(tmp_path: Path) -> None:
-    target = tmp_path / "cli.py"
-    _ = target.write_text(_COMMAND)
-
-    result = runner.invoke(app, ["check", "-q", "--no-exempt-typer-args", str(target)])
-
-    assert result.stdout.splitlines() == [
-        f'{target}:2:17: NOPRIM001 parameter "force" is annotated "bool"'
-    ]
-
-
 def test_exempt_typer_args_can_come_from_the_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / ".git").mkdir()
-    _ = (tmp_path / "noprim.toml").write_text("exempt-typer-args = false\n")
+    _ = (tmp_path / "noprim.toml").write_text("exempt-typer-args = true\n")
     _ = (tmp_path / "cli.py").write_text(_COMMAND)
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ["check", "-q", "cli.py"])
 
-    assert result.stdout.splitlines() == [
-        'cli.py:2:17: NOPRIM001 parameter "force" is annotated "bool"'
-    ]
+    assert result.stdout.splitlines() == []
 
 
-def test_exempt_typer_args_overrides_the_config_key(
+def test_no_exempt_typer_args_overrides_the_config_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / ".git").mkdir()
-    _ = (tmp_path / "noprim.toml").write_text("exempt-typer-args = false\n")
+    _ = (tmp_path / "noprim.toml").write_text("exempt-typer-args = true\n")
     _ = (tmp_path / "cli.py").write_text(_COMMAND)
     monkeypatch.chdir(tmp_path)
 
-    result = runner.invoke(app, ["check", "-q", "--exempt-typer-args", "cli.py"])
+    result = runner.invoke(app, ["check", "-q", "--no-exempt-typer-args", "cli.py"])
 
-    assert result.stdout.splitlines() == []
+    assert result.stdout.splitlines() == [
+        'cli.py:2:17: NOPRIM001 parameter "force" is annotated "bool"'
+    ]

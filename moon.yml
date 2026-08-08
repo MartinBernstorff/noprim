@@ -80,9 +80,9 @@ tasks:
       - '@group(sources)'
       - '@group(manifests)'
 
-  # Dogfooding: every rule on, no --allow flags.
+  # Dogfooding: the shipped defaults, no config file and no --allow flags.
   noprim:
-    script: 'uv run noprim check --preset all .'
+    script: 'uv run noprim check .'
     inputs:
       - '@group(sources)'
       - '@group(manifests)'

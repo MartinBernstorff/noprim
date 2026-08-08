@@ -19,26 +19,31 @@ Every violation names the rule that fired, and rules are numbered by smell and b
 surface — so a codebase drowning in return types can silence `NOPRIM002` without
 allowing `int` everywhere.
 
-| Code | Rule | Flags | Default |
-| --- | --- | --- | --- |
-| `NOPRIM001` | `primitive-parameter` | `def send(to: str) -> None` | on |
-| `NOPRIM002` | `primitive-return` | `def total() -> int` | on |
-| `NOPRIM003` | `primitive-attribute` | `class Order:` / `    id: str` | on |
-| `NOPRIM004` | `top-type-parameter` | `def send(to: Any) -> None` | off |
-| `NOPRIM005` | `top-type-return` | `def payload() -> Any` | off |
-| `NOPRIM006` | `top-type-attribute` | `class Order:` / `    meta: Any` | off |
-| `NOPRIM007` | `predicate-return` | `def is_ready() -> bool` | off |
+Every rule runs unless you turn it off. A codebase that has not configured noprim sees
+everything it has to say, and narrows from there — nothing waits quietly to be
+discovered later.
 
-`--preset` chooses which set to start from — `default` for the rules marked on above,
-`all` for every rule there is. `--select` replaces that set outright,
-`--extend-select` adds to it and `--ignore` subtracts, all three taking code prefixes
-as ruff does. A selector that names no rule is an error.
+| Code | Rule | Flags | In `core` |
+| --- | --- | --- | --- |
+| `NOPRIM001` | `primitive-parameter` | `def send(to: str) -> None` | yes |
+| `NOPRIM002` | `primitive-return` | `def total() -> int` | yes |
+| `NOPRIM003` | `primitive-attribute` | `class Order:` / `    id: str` | yes |
+| `NOPRIM004` | `top-type-parameter` | `def send(to: Any) -> None` | no |
+| `NOPRIM005` | `top-type-return` | `def payload() -> Any` | no |
+| `NOPRIM006` | `top-type-attribute` | `class Order:` / `    meta: Any` | no |
+| `NOPRIM007` | `predicate-return` | `def is_ready() -> bool` | no |
+
+`--preset` chooses which set to start from — `all` for every rule there is, which is
+what you get without one, and `core` for the three marked above, the rules a codebase
+almost always wants first. `--select` replaces that set outright, `--extend-select`
+adds to it and `--ignore` subtracts, all three taking code prefixes as ruff does. A
+selector that names no rule is an error.
 
 ```console
-$ noprim check --ignore NOPRIM002 .          # every default rule but return types
-$ noprim check --extend-select NOPRIM004 .   # the defaults, plus Any on parameters
-$ noprim check --preset all .                # every rule there is
-$ noprim check --preset all --ignore NOPRIM007 .   # every rule but predicates
+$ noprim check .                             # every rule there is
+$ noprim check --ignore NOPRIM007 .          # every rule but predicates
+$ noprim check --preset core .               # parameters, returns and attributes
+$ noprim check --preset core --extend-select NOPRIM004 .   # those, plus Any on parameters
 ```
 
 An annotation can break two rules at once — `dict[str, Any]` is a primitive and a top
@@ -56,7 +61,7 @@ The deny-list covers the builtins (`int`, `str`, `float`, `bool`, `bytes`,
 `Any` and `object` are not on it. They are top types, not primitives: they say the
 type is unknown rather than too narrow, and `object` is the right annotation for
 `**kwargs` you never inspect. That is a different smell, so it has rules of its own —
-`NOPRIM004` to `NOPRIM006`, off until selected. Those rules are all or nothing, so
+`NOPRIM004` to `NOPRIM006`, outside `core`. Those rules are all or nothing, so
 `--allow Any` is an error; `--deny Any` still works if you want one of them on the
 deny-list by itself, reported as an ordinary primitive.
 
@@ -78,19 +83,21 @@ Some signatures are not the author's to choose, so noprim does not report them:
   are untouched.
 - **Predicates** — functions returning a bare `bool`. A domain type around the answer
   to a yes-or-no question rarely earns its keep, so `NOPRIM002` leaves them to
-  `NOPRIM007`, which is off by default. Only the bare return type is carved out: a
-  `bool` parameter, attribute, `list[bool]` or `bool | None` is still reported.
+  `NOPRIM007` — the rule to `--ignore` if you agree. Only the bare return type is
+  carved out: a `bool` parameter, attribute, `list[bool]` or `bool | None` is still
+  reported.
 - **`self` and `cls`.**
 - **`Literal[...]` arguments**, which are values rather than types.
 - **Parameters of pytest tests and fixtures**, in files matching `test_*.py` or
   `*_test.py`. pytest decides what a fixture injects and what `parametrize` feeds in,
   so the parameter type is not a free choice. Return types and attributes in those
   files are still checked, as are ordinary helpers that happen to live beside tests.
-- **`bool` parameters of Typer commands**, unless `exempt-typer-args` is turned off.
-  A bare boolean flag has no other spelling: click decides flag-ness from the annotation
-  being literally `bool`, so wrapping it makes `--dry-run` start demanding an argument.
-  Only `bool` — a `str` or a `Path` option has real alternatives, and is reported with
-  them named. Matched on the attribute the app object is asked for — `command` or
+- **`bool` parameters of Typer commands**, once `exempt-typer-args` is turned on. It is
+  off by default, like everything else, so those parameters are reported until you say
+  otherwise. A bare boolean flag has no other spelling: click decides flag-ness from the
+  annotation being literally `bool`, so wrapping it makes `--dry-run` start demanding an
+  argument. Only `bool` — a `str` or a `Path` option has real alternatives, and is
+  reported with them named. Matched on the attribute the app object is asked for — `command` or
   `callback` — so it holds however that object is named, while unrelated names like
   `command_runner` and a bare `@command`, which Typer never spells, stay checked. Return
   types are still checked, as are helpers and nested functions.
@@ -153,9 +160,8 @@ inside a function, is a class you wrote and stays checked. Everything inside a m
 body is skipped, however deeply nested, so the blast radius is whatever you deliberately
 put in there.
 
-A Typer command is the same story told the other way. Its `bool` flags are exempt by
-default, because nothing else can spell them, and every other primitive is reported with
-the way out named:
+A Typer command is the same story told the other way, and every primitive in one is
+reported with the way out named:
 
 ```console
 $ noprim check cli.py
@@ -163,9 +169,9 @@ cli.py:2:15: NOPRIM001 parameter "env" is annotated "str"; Typer renders an enum
 ```
 
 Both fixes are real: an `enum.Enum` renders as `[dev|prod]` in `--help` with no extra
-work, and `typer.Option(parser=...)` takes any type at all. `--no-exempt-typer-args`
-drops the last exemption too, for a codebase that would rather see the `bool` flags and
-suppress them a line at a time.
+work, and `typer.Option(parser=...)` takes any type at all. Its `bool` flags are the one
+case with no way out — nothing else can spell them — so `--exempt-typer-args` stops
+reporting those, for a codebase that would rather not suppress them a line at a time.
 
 ## Flags
 
@@ -173,15 +179,15 @@ suppress them a line at a time.
 | --- | --- |
 | `--allow NAME` | Remove a type from the deny-list. Repeatable. |
 | `--deny NAME` | Add a type to the deny-list. Repeatable. |
-| `--preset default\|all` | Which rules to start from before `--select`, `--extend-select` and `--ignore`. |
-| `--select CODE` | Run these rule codes instead of the defaults. Prefixes count. Repeatable. |
+| `--preset core\|all` | Which rules to start from before `--select`, `--extend-select` and `--ignore`. Defaults to `all`. |
+| `--select CODE` | Run these rule codes instead of the preset's. Prefixes count. Repeatable. |
 | `--extend-select CODE` | Run these rule codes as well as the selected ones. Repeatable. |
 | `--ignore CODE` | Drop these rule codes from the run. Repeatable. |
 | `--ignore-names GLOB` | Skip parameters and attributes matching `GLOB`. Repeatable. |
 | `--ignore-param-names GLOB` | Skip parameters matching `GLOB`. Repeatable. |
 | `--ignore-attribute-names GLOB` | Skip attributes matching `GLOB`. Repeatable. |
 | `--ignore-inner-classes GLOB` | Skip the body of a nested class matching `GLOB`. Repeatable. |
-| `--exempt-typer-args` / `--no-exempt-typer-args` | Skip `bool` parameters of a Typer command or callback. On by default. |
+| `--exempt-typer-args` / `--no-exempt-typer-args` | Skip `bool` parameters of a Typer command or callback. Off by default. |
 | `--exclude GLOB` | Skip paths while walking. Gitignore syntax, anchored at the config file's directory, or the repo root when there is no config. Repeatable. |
 | `--quiet`, `-q` | Suppress the trailing summary. |
 | `--statistics` | Print counts instead of one line per violation. |
@@ -252,11 +258,15 @@ ignore-names = ["kwargs", "size"]
 ignore-param-names = ["value", "*_contains"]
 ignore-attribute-names = ["_*"]
 ignore-inner-classes = ["Meta"]
-exempt-typer-args = false
-preset = "all"
+exempt-typer-args = true
+preset = "core"
 extend-select = ["NOPRIM004"]
 ignore = ["NOPRIM002"]
 ```
+
+Every rule ships on and every exemption ships off, so the rule keys here only ever
+narrow what you already get. The deny-list is the one axis with room above the default:
+`deny` adds to it.
 
 Every key is a flag of the same name, and passing that flag replaces the key outright
 rather than adding to it — `--deny Enum` ignores whatever `deny` the file set.
@@ -352,9 +362,10 @@ type to what to reach for instead, and every name on the deny-list has an entry.
 
 ## Dogfooding
 
-`moon run :noprim` runs this linter over its own source under `--preset all` and with
-no `--allow` flags, as part of the lint chain and the pre-commit hooks. Building it that way surfaced three
-things worth recording:
+`moon run :noprim` runs this linter over its own source with no config file and no
+flags — the shipped defaults, which are every rule and no exemptions — as part of the
+lint chain and the pre-commit hooks. Building it that way surfaced three things worth
+recording:
 
 - **`X | None` was invisible.** The checker matched `Optional[str]` but not the PEP 604
   spelling, because `ast.BinOp` had no case. Nothing in the repo caught it until the
@@ -367,6 +378,7 @@ things worth recording:
   so that the call sites read as booleans and every one of them disappears when iterpy
   accepts anything boolish.
 - **Frameworks own some signatures.** Typer reads the command's annotations to build
-  the CLI, so those five parameters carry `# noprim: ignore`, as does one test double
+  the CLI, so every parameter of `check` but the two enums carries `# noprim: ignore`,
+  as does one test double
   bound to `Path.is_dir`'s signature. pytest's ownership of test signatures was
   frequent enough to become a rule rather than 40 comments.

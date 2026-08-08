@@ -9,7 +9,7 @@ from noprim_types.verdict import Verdict
 
 class PrimitiveAttribute(Rule):
     code = RuleCode("NOPRIM003")
-    on_by_default = Verdict(root=True)
+    in_core = Verdict(root=True)
 
     @override
     def applies(self, site: Site, config: CheckConfig) -> Verdict:

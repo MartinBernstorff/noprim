@@ -80,6 +80,4 @@ class CheckConfig(BaseModel):
     ignored_parameter_names: NamePatterns = NamePatterns(())
     ignored_attribute_names: NamePatterns = NamePatterns(())
     ignored_inner_classes: NamePatterns = NamePatterns(())
-    # Typer reads a command's annotations to build the command line, so its parameters
-    # are not the author's to choose.
-    exempt_typer_args: Verdict = Verdict(root=True)
+    exempt_typer_args: Verdict = Verdict(root=False)
