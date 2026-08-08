@@ -100,6 +100,8 @@ Three things keep this honest, and all will fail loudly if you break them:
 
 Always run tasks through moon, never the tool directly: `moon run :test`, not `pytest`. Moon resolves task dependencies and caches aggressively.
 
+**A task's inputs must include the sources it reads across a package boundary.** `dependsOn` orders projects; it does not make the upstream package's files an input, so a downstream `test` or `typecheck` would replay a stale cache after an upstream edit — a test that no longer holds still reports a pass. Each downstream package carries an `upstream` file group for exactly this, listed as an input on `test` and `typecheck`. `lint` and `format` are per-file and do not need it. A new package means a new `upstream` group.
+
 | Task | Does |
 | --- | --- |
 | `moon run :test` | pytest |
