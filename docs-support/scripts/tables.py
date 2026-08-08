@@ -58,13 +58,13 @@ def _rule_row(rule: Rule) -> Row:
             Cell(rule.code.root),
             Cell(rule.name.root),
             Cell(rule.example.root),
-            Cell("yes" if rule.in_core else "no"),
+            Cell(rule.in_preset.value if rule.in_preset is not None else "none"),
         )
     )
 
 
 def rules() -> Table:
-    header = Row((Cell("Code"), Cell("Rule"), Cell("Flags"), Cell("In core")))
+    header = Row((Cell("Code"), Cell("Rule"), Cell("Flags"), Cell("Preset")))
     return _aligned(Arr([header, *Arr(RULES).map(_rule_row)]))
 
 

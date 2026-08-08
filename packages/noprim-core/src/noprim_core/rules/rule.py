@@ -4,6 +4,7 @@ from pydantic import ConfigDict, RootModel
 
 from noprim_core.config import CheckConfig
 from noprim_core.rules.code import RuleCode
+from noprim_core.rules.preset import Preset
 from noprim_core.site import Site, Surface
 from noprim_core.violation import Violation
 from noprim_types.verdict import Verdict
@@ -35,8 +36,9 @@ class Rule(Protocol):
     @property
     def example(self) -> RuleExample: ...
 
+    # The smallest preset the rule belongs to; None for a rule no preset turns on.
     @property
-    def in_core(self) -> Verdict: ...
+    def in_preset(self) -> Preset | None: ...
 
     def applies(self, site: Site, config: CheckConfig) -> Verdict: ...
 

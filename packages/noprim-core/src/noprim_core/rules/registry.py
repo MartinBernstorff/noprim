@@ -41,12 +41,16 @@ def rule_for(code: RuleCode) -> Rule:
     return found[0]
 
 
+def _selection_of(members: Arr[Rule]) -> Selection:
+    return Selection(frozenset(members.map(lambda rule: rule.code)))
+
+
 def core_selection() -> Selection:
-    return Selection(
-        frozenset(
-            Arr(RULES).filter(lambda rule: rule.in_core).map(lambda rule: rule.code)
-        )
-    )
+    return _selection_of(Arr(RULES).filter(lambda rule: rule.in_preset == Preset.CORE))
+
+
+def all_selection() -> Selection:
+    return _selection_of(Arr(RULES).filter(lambda rule: rule.in_preset is not None))
 
 
 def preset_selection(preset: Preset) -> Selection:
@@ -54,7 +58,7 @@ def preset_selection(preset: Preset) -> Selection:
         case Preset.CORE:
             return core_selection()
         case Preset.ALL:
-            return Selection(frozenset(Arr(RULES).map(lambda rule: rule.code)))
+            return all_selection()
 
 
 def _matches_any(code: RuleCode, selectors: Selectors) -> Verdict:
