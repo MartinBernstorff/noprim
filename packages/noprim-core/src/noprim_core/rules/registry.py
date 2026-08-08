@@ -2,6 +2,7 @@ from iterpy import Arr
 
 from noprim_core.rules.code import RuleCode, Selection, Selector, Selectors
 from noprim_core.rules.predicate_return import PredicateReturn
+from noprim_core.rules.preset import Preset
 from noprim_core.rules.primitive_attribute import PrimitiveAttribute
 from noprim_core.rules.primitive_parameter import PrimitiveParameter
 from noprim_core.rules.primitive_return import PrimitiveReturn
@@ -50,6 +51,14 @@ def default_selection() -> Selection:
     )
 
 
+def preset_selection(preset: Preset) -> Selection:
+    match preset:
+        case Preset.DEFAULT:
+            return default_selection()
+        case Preset.ALL:
+            return Selection(frozenset(Arr(RULES).map(lambda rule: rule.code)))
+
+
 def _matches_any(code: RuleCode, selectors: Selectors) -> Verdict:
     return Verdict.any(Arr(selectors.root).map(lambda selector: selector.matches(code)))
 
@@ -77,11 +86,11 @@ def validate_selectors(selectors: Selectors) -> None:
 
 
 def selection(
-    select: Selectors | None, extend: Selectors, ignore: Selectors
+    preset: Preset, select: Selectors | None, extend: Selectors, ignore: Selectors
 ) -> Selection:
     validate_selectors(extend)
     validate_selectors(ignore)
     if select is not None:
         validate_selectors(select)
-    chosen = default_selection() if select is None else _selected(select)
+    chosen = preset_selection(preset) if select is None else _selected(select)
     return Selection((chosen.root | _selected(extend).root) - _selected(ignore).root)

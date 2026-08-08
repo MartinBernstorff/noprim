@@ -29,14 +29,16 @@ allowing `int` everywhere.
 | `NOPRIM006` | `top-type-attribute` | `class Order:` / `    meta: Any` | off |
 | `NOPRIM007` | `predicate-return` | `def is_ready() -> bool` | off |
 
-`--select` replaces the default set, `--extend-select` adds to it and `--ignore`
-subtracts, all three taking code prefixes as ruff does. A selector that names no rule
-is an error.
+`--preset` chooses which set to start from — `default` for the rules marked on above,
+`all` for every rule there is. `--select` replaces that set outright,
+`--extend-select` adds to it and `--ignore` subtracts, all three taking code prefixes
+as ruff does. A selector that names no rule is an error.
 
 ```console
 $ noprim check --ignore NOPRIM002 .          # every default rule but return types
 $ noprim check --extend-select NOPRIM004 .   # the defaults, plus Any on parameters
-$ noprim check --select NOPRIM .             # every rule there is
+$ noprim check --preset all .                # every rule there is
+$ noprim check --preset all --ignore NOPRIM007 .   # every rule but predicates
 ```
 
 An annotation can break two rules at once — `dict[str, Any]` is a primitive and a top
@@ -113,6 +115,7 @@ function's name, not one of its own, so it is never skipped this way.
 | --- | --- |
 | `--allow NAME` | Remove a type from the deny-list. Repeatable. |
 | `--deny NAME` | Add a type to the deny-list. Repeatable. |
+| `--preset default\|all` | Which rules to start from before `--select`, `--extend-select` and `--ignore`. |
 | `--select CODE` | Run these rule codes instead of the defaults. Prefixes count. Repeatable. |
 | `--extend-select CODE` | Run these rule codes as well as the selected ones. Repeatable. |
 | `--ignore CODE` | Drop these rule codes from the run. Repeatable. |
@@ -135,6 +138,7 @@ allow = ["str"]
 deny = ["Enum"]
 exclude = ["generated/**"]
 ignore-names = ["kwargs", "size"]
+preset = "all"
 extend-select = ["NOPRIM004"]
 ignore = ["NOPRIM002"]
 ```
@@ -203,7 +207,7 @@ instead — `per-path.0.selct  Extra inputs are not permitted`.
 
 ## Dogfooding
 
-`moon run :noprim` runs this linter over its own source with every rule selected and
+`moon run :noprim` runs this linter over its own source under `--preset all` and with
 no `--allow` flags, as part of the lint chain and the pre-commit hooks. Building it that way surfaced three
 things worth recording:
 

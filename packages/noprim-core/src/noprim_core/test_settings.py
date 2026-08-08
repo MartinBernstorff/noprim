@@ -5,7 +5,12 @@ from pydantic import ValidationError
 
 from noprim_core.config import DeniedTypes
 from noprim_core.rules.code import RuleCode, Selector, Selectors
-from noprim_core.rules.registry import UnknownSelectorError, default_selection
+from noprim_core.rules.preset import Preset
+from noprim_core.rules.registry import (
+    UnknownSelectorError,
+    default_selection,
+    preset_selection,
+)
 from noprim_core.settings import (
     AllowedAndDeniedError,
     AllowedNames,
@@ -41,6 +46,16 @@ def test_defaults_resolve_to_the_default_deny_list() -> None:
 
 def test_defaults_resolve_to_the_default_selection() -> None:
     assert Settings().resolve(_ANY).selection == default_selection()
+
+
+def test_a_preset_is_the_base_selection_and_is_spelled_as_a_string() -> None:
+    settings = Settings.model_validate({"preset": "all"})
+    assert settings.resolve(_ANY).selection == preset_selection(Preset.ALL)
+
+
+def test_a_preset_that_names_nothing_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        _ = Settings.model_validate({"preset": "pedantic"})
 
 
 def test_select_narrows_the_rules_that_run() -> None:

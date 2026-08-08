@@ -233,6 +233,31 @@ def test_a_selector_prefix_turns_on_every_rule(tmp_path: Path) -> None:
     ]
 
 
+def test_the_all_preset_turns_on_every_rule(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def is_ready(x: Any) -> bool: ...\n")
+
+    result = runner.invoke(app, ["check", "--preset", "all", str(target)])
+
+    assert result.stdout.splitlines() == [
+        f'{target}:1:17: NOPRIM004 parameter "x" is annotated "Any"',
+        f'{target}:1:25: NOPRIM007 return type is annotated "bool"',
+    ]
+
+
+def test_ignore_subtracts_from_the_all_preset(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def is_ready(x: Any) -> bool: ...\n")
+
+    result = runner.invoke(
+        app, ["check", "--preset", "all", "--ignore", "NOPRIM007", str(target)]
+    )
+
+    assert result.stdout.splitlines() == [
+        f'{target}:1:17: NOPRIM004 parameter "x" is annotated "Any"'
+    ]
+
+
 def test_extend_select_adds_a_rule_to_the_defaults(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
     _ = target.write_text("def f(x: Any, y: int) -> None: ...\n")
@@ -599,6 +624,20 @@ def test_a_flag_replaces_the_same_key_from_the_config(
 
     assert result.exit_code == 1
     assert 'parameter "x" is annotated "str"' in result.stdout
+
+
+def test_the_preset_flag_replaces_the_one_from_the_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _project(ExistingDirectory(tmp_path), ConfigText('preset = "all"\n'))
+    _ = (tmp_path / "a.py").write_text("def is_ready(x: Name) -> bool: ...\n")
+    monkeypatch.chdir(tmp_path)
+
+    under_config = runner.invoke(app, ["check", "a.py"])
+    overridden = runner.invoke(app, ["check", "--preset", "default", "a.py"])
+
+    assert "NOPRIM007" in under_config.stdout
+    assert overridden.stdout.splitlines() == []
 
 
 def test_a_per_path_override_from_the_config_is_applied(
