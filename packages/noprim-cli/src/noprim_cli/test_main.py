@@ -182,6 +182,17 @@ def test_predicates_are_skipped_until_asked_for(tmp_path: Path) -> None:
     ]
 
 
+def test_ignore_names_skips_symbols_by_name(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def f(size: int, **kwargs: str) -> None: ...\n")
+
+    result = runner.invoke(app, ["check", "--ignore-names", "kwargs", str(target)])
+
+    assert result.stdout.splitlines() == [
+        f'{target}:1:13: parameter "size" is annotated "int"'
+    ]
+
+
 def test_deny_adds_type_to_deny_list(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
     _ = target.write_text("def f(amount: Money) -> None: ...\n")

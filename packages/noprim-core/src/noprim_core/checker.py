@@ -65,9 +65,14 @@ class DeniedTypes(RootModel[frozenset[str]]):
         )
 
 
+class IgnoredNames(RootModel[frozenset[str]]):
+    pass
+
+
 class CheckConfig(BaseModel):
     denied: DeniedTypes = Field(default_factory=DeniedTypes.default)
     check_predicates: Verdict = Verdict(root=False)
+    ignored_names: IgnoredNames = IgnoredNames(frozenset())
 
 
 class Surface(StrEnum):
@@ -347,6 +352,13 @@ def _sites_in(body: list[ast.stmt], scope: Qualname) -> Arr[Site]:
     )
 
 
+def _named_as_ignored(site: Site, ignored: IgnoredNames) -> Verdict:
+    # A return type carries the function's name, not a symbol name of its own.
+    return Verdict(
+        site.surface != Surface.RETURN and site.qualname.leaf().root in ignored.root
+    )
+
+
 def check_source(
     source: SourceCode, filename: Filename, config: CheckConfig
 ) -> Arr[Violation]:
@@ -364,6 +376,7 @@ def check_source(
                 bool(config.check_predicates) or not bool(site.predicate_return)
             )
         )
+        .filter(lambda site: not bool(_named_as_ignored(site, config.ignored_names)))
         .filter(lambda site: site.line.root not in ignored.root)
         .map(
             lambda site: Violation(

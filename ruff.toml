@@ -39,7 +39,8 @@ select = [
 ignore = ["E501"]
 
 [lint.per-file-ignores]
-"packages/noprim-cli/src/**" = ["FBT001", "FBT002"]
+# Typer derives flags from the command's signature, so it grows one parameter per flag.
+"packages/noprim-cli/src/**" = ["FBT001", "FBT002", "PLR0913", "PLR0917"]
 "**/test_*.py" = ["PLR2004"]
 
 [lint.isort]
