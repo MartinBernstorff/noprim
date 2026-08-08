@@ -169,21 +169,13 @@ class OwnedQualnames(RootModel[frozenset[Qualname]]):
         return Verdict(violation.qualname in self.root)
 
 
-class PytestOwned(OwnedQualnames):
-    pass
-
-
-class InnerClassOwned(OwnedQualnames):
-    pass
-
-
 class Suppressions(BaseModel):
     file: IgnoredFile = IgnoredFile(root=None)
     lines: IgnoredLines = IgnoredLines({})
     parameter_names: NamePatterns = NamePatterns(())
     attribute_names: NamePatterns = NamePatterns(())
-    inner_class_owned: InnerClassOwned = InnerClassOwned(frozenset())
-    pytest_owned: PytestOwned = PytestOwned(frozenset())
+    inner_class_owned: OwnedQualnames = OwnedQualnames(frozenset())
+    pytest_owned: OwnedQualnames = OwnedQualnames(frozenset())
 
     def _patterns_for(self, surface: Surface) -> NamePatterns:
         match surface:

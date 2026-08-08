@@ -725,6 +725,29 @@ def test_a_per_path_glob_of_ignored_parameter_names_is_applied(
     assert "found 1 violation, 1 suppressed" in result.stderr
 
 
+def test_a_per_path_glob_of_ignored_inner_classes_is_applied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _project(
+        ExistingDirectory(tmp_path),
+        ConfigText(
+            '[[per-path]]\npaths = ["django_app/**"]\nignore-inner-classes = ["Met*"]\n'
+        ),
+    )
+    (tmp_path / "django_app").mkdir()
+    _ = (tmp_path / "django_app" / "filters.py").write_text(
+        "class F:\n    name: str\n\n    class Meta:\n        fields: list[str] = []\n"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["check", "django_app"])
+
+    assert result.stdout.splitlines() == [
+        'django_app/filters.py:2:11: NOPRIM003 attribute "name" is annotated "str"'
+    ]
+    assert "found 1 violation, 1 suppressed" in result.stderr
+
+
 def test_an_unreadable_config_exits_two(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

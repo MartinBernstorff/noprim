@@ -108,7 +108,6 @@ class NameKeys(BaseModel):
     ignore_names: NamePatterns = NamePatterns(())
     ignore_param_names: NamePatterns = NamePatterns(())
     ignore_attribute_names: NamePatterns = NamePatterns(())
-    # Not part of ignore-names: a class body is a place, not a surface.
     ignore_inner_classes: NamePatterns = NamePatterns(())
 
     def parameter_names(self) -> NamePatterns:

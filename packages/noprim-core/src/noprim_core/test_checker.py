@@ -362,6 +362,17 @@ def test_ignores_the_body_of_a_configured_inner_class() -> None:
     assert [v.qualname.root for v in violations] == ["Filter.name"]
 
 
+def test_an_inner_class_pattern_takes_a_glob() -> None:
+    config = CheckConfig(
+        selection=default_selection(), ignored_inner_classes=NamePatterns(("*Meta",))
+    )
+    violations = _check(
+        SourceCode("class F:\n    class FilterMeta:\n        fields: list[str] = []\n"),
+        config,
+    )
+    assert [v.qualname.root for v in violations] == []
+
+
 def test_an_ignored_inner_class_is_suppressed_rather_than_never_found() -> None:
     outcome = check_source(SourceCode(_FILTER), Filename("a.py"), _ignoring_meta())
     assert [(s.violation.qualname.root, str(s.reason)) for s in outcome.suppressed] == [
@@ -383,6 +394,10 @@ def test_an_ignored_inner_class_is_suppressed_rather_than_never_found() -> None:
             ["F.Other.fields"],
         ),
         ("class F:\n    class Meta:\n        def m(self, x: int) -> None: ...\n", []),
+        (
+            "def build() -> None:\n    class Meta:\n        fields: list[str] = []\n",
+            ["build.Meta.fields"],
+        ),
     ],
 )
 def test_only_a_nested_class_of_that_name_is_ignored(

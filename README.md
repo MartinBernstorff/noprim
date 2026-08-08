@@ -142,9 +142,10 @@ class instead:
 noprim check --ignore-inner-classes Meta .
 ```
 
-Only a *nested* class matches: a module-level `class Meta` is a class you wrote, and
-stays checked. Everything inside a matching body is skipped, however deeply nested, so
-the blast radius is whatever you deliberately put in there.
+Only a class inside another class matches: a module-level `class Meta`, or one defined
+inside a function, is a class you wrote and stays checked. Everything inside a matching
+body is skipped, however deeply nested, so the blast radius is whatever you deliberately
+put in there.
 
 ## Flags
 
