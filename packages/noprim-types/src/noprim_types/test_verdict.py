@@ -1,7 +1,6 @@
 import pytest
-from iterpy import Arr
 
-from noprim_core.verdict import Verdict
+from noprim_types.verdict import Verdict
 
 YES = Verdict(root=True)
 NO = Verdict(root=False)
@@ -31,12 +30,12 @@ def test_negates(given: Verdict, expected: Verdict) -> None:
 @pytest.mark.parametrize(
     ("given", "expected"),
     [
-        (Arr([]), NO),
-        (Arr([NO, NO]), NO),
-        (Arr([NO, YES]), YES),
-        (Arr([YES, YES]), YES),
+        ([], NO),
+        ([NO, NO], NO),
+        ([NO, YES], YES),
+        ([YES, YES], YES),
     ],
     ids=["none", "all-no", "one-yes", "all-yes"],
 )
-def test_any_holds_when_one_does(given: Arr[Verdict], expected: Verdict) -> None:
+def test_any_holds_when_one_does(given: list[Verdict], expected: Verdict) -> None:
     assert Verdict.any(given) == expected

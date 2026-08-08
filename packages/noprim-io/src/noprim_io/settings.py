@@ -12,8 +12,8 @@ from pydantic_settings import (
 
 from noprim_core.config import CheckConfig
 from noprim_core.settings import PathPatterns, RelativePath, Settings
-from noprim_core.verdict import Verdict
 from noprim_io.paths import ExistingDirectory, SourceFile, ancestry, repo_root
+from noprim_types.verdict import Verdict
 
 
 class ConfigFile(RootModel[Path]):

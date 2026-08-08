@@ -7,6 +7,7 @@ layer: 'application'
 tags: ['python']
 
 dependsOn:
+  - 'noprim-types'
   - 'noprim-core'
   - 'noprim-io'
 
@@ -16,6 +17,7 @@ fileGroups:
   # The tasks that resolve imports across the boundary must be invalidated by the
   # upstream source too; dependsOn alone does not make it an input.
   upstream:
+    - '/packages/noprim-types/src/**/*.py'
     - '/packages/noprim-core/src/**/*.py'
     - '/packages/noprim-io/src/**/*.py'
   manifests:

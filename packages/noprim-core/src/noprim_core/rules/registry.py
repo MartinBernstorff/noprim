@@ -10,7 +10,7 @@ from noprim_core.rules.rule import Rule
 from noprim_core.rules.top_type_attribute import TopTypeAttribute
 from noprim_core.rules.top_type_parameter import TopTypeParameter
 from noprim_core.rules.top_type_return import TopTypeReturn
-from noprim_core.verdict import Verdict
+from noprim_types.verdict import Verdict
 
 RULES: tuple[Rule, ...] = (
     PrimitiveParameter(),

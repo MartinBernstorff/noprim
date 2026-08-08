@@ -1,6 +1,6 @@
 from pydantic import ConfigDict, RootModel
 
-from noprim_core.verdict import Verdict
+from noprim_types.verdict import Verdict
 
 
 class RuleCode(RootModel[str]):

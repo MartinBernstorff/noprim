@@ -22,7 +22,6 @@ from noprim_cli.render import (
 from noprim_core.baseline import Baseline, BaselineOutcome, apply_baseline
 from noprim_core.rules.preset import Preset
 from noprim_core.settings import Settings
-from noprim_core.verdict import Verdict
 from noprim_io.baseline import (
     BaselinePath,
     MalformedBaselineError,
@@ -36,6 +35,7 @@ from noprim_io.baseline import (
 from noprim_io.check import CheckPaths, CheckReport, DiscoveryConfig, check_paths
 from noprim_io.paths import ExistingDirectory
 from noprim_io.settings import LoadedSettings, load_settings
+from noprim_types.verdict import Verdict
 
 
 class ConfigError(typer.BadParameter):
