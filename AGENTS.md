@@ -85,7 +85,7 @@ Three things keep this honest, and all will fail loudly if you break them:
 
 - **A flag overrides the config key with its own name.** `check` hands its parameters to `_overrides`, which keeps the ones `Settings.model_fields` knows and lets pydantic coerce the raw `list[str]` into the field's type — so a new setting needs a Typer annotation and nothing else. The name is the wiring, and `test_every_flag_that_is_not_run_mode_names_a_config_key` is what stops a mistyped parameter from becoming a flag that silently does nothing.
 - **`LoadedSettings.anchor` is `None` when no config was found.** Patterns then have no directory to hang off, and the walk falls back to the target's repo root — which is what makes `--exclude` behave the same with and without a config file.
-- **`_coherent` is the one seam that locates a per-path complaint.** Pydantic attributes an after-validator error to `Settings`, not to the entry, so every complaint from an override is re-raised through `PerPathError` carrying the block's own patterns. Validate a new override key inside `_coherent` and it is located for free; validate it anywhere else and the user gets a message with no way to find the block.
+- **`_validated_entry` is the one seam that locates a per-path complaint.** Pydantic attributes an after-validator error to `Settings`, not to the entry, so every complaint raised there is re-wrapped in `PerPathError` carrying the block's own patterns. Validate a new override key inside `_validated_entry` and it is located for free; validate it anywhere else and the user gets a message with no way back to the block. Schema-level rejections — an unrecognised key under `extra="forbid"` — never reach the validator and are located by position instead.
 
 ## Python
 

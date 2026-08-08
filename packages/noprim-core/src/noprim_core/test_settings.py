@@ -9,7 +9,6 @@ from noprim_core.settings import (
     AllowedNames,
     DeniedNames,
     EmptyNameError,
-    Message,
     NotOnDenyListError,
     PathOverride,
     PathPatterns,
@@ -28,11 +27,6 @@ def _raised(error: ValidationError, expected: type[ValueError]) -> Verdict:
     if isinstance(cause, PerPathError):
         cause = cause.__cause__
     return Verdict(isinstance(cause, expected))
-
-
-def _complaint(error: ValidationError) -> Message:
-    # pyrefly: ignore[not-required-key-access]
-    return Message(str(error.errors()[0]["ctx"]["error"]))
 
 
 def test_defaults_resolve_to_the_default_deny_list() -> None:
@@ -212,7 +206,7 @@ def test_a_per_path_complaint_names_the_patterns_it_came_from() -> None:
                 ),
             )
         )
-    assert "legacy/**, vendor/**" in _complaint(caught.value).root
+    assert "legacy/**, vendor/**" in str(caught.value)
 
 
 def test_an_override_may_allow_a_name_the_top_level_denied() -> None:

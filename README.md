@@ -192,11 +192,14 @@ recognise. A config that quietly does nothing is the failure this feature exists
 prevent. Ignoring a code that is not currently selected is *not* an error, though —
 deselecting a rule globally should not break an unrelated override that mentions it.
 
-Complaints name the block they came from by its patterns:
+These complaints name the block they came from by its patterns:
 
 ```
 allow of a name that is not on the deny-list: Enum (per-path entry for legacy/**)
 ```
+
+An unrecognised key is caught earlier, by the schema, and is located by position
+instead — `per-path.0.selct  Extra inputs are not permitted`.
 
 ## Dogfooding
 

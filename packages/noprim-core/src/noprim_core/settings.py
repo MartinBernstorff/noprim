@@ -77,13 +77,9 @@ def _adjusted(
     return DeniedTypes((denied.root - set(allow.root)) | set(deny.root))
 
 
-class Message(RootModel[str]):
-    pass
-
-
 class PerPathError(ValueError):
-    def __init__(self, paths: PathPatterns, cause: Message) -> None:
-        super().__init__(f"{cause.root} (per-path entry for {', '.join(paths.root)})")
+    def __init__(self, paths: PathPatterns, cause: ValueError) -> None:
+        super().__init__(f"{cause} (per-path entry for {', '.join(paths.root)})")
 
 
 class FieldName(RootModel[str]):
@@ -108,7 +104,6 @@ class PathOverride(BaseModel):
     paths: PathPatterns
     allow: AllowedNames = AllowedNames(())
     deny: DeniedNames = DeniedNames(())
-    # Deselects rules rather than suppressing them, so an override can only relax.
     ignore: Selectors = Selectors(())
 
     def matches(self, path: RelativePath) -> Verdict:
@@ -141,14 +136,14 @@ class PathOverrides(RootModel[tuple[PathOverride, ...]]):
         )
 
 
-# One seam: every per-path complaint is located by the block's own patterns, which is
-# what the reader greps for. Pydantic attributes the error to Settings, not the entry.
-def _coherent(override: PathOverride, denied: DeniedTypes) -> None:
+# Pydantic attributes an after-validator error to Settings, not to the entry that
+# caused it, so the block's own patterns are the only way back to it.
+def _validated_entry(override: PathOverride, denied: DeniedTypes) -> None:
     try:
         _validated(override.allow, override.deny, denied)
         validate_selectors(override.ignore)
     except ValueError as error:
-        raise PerPathError(override.paths, Message(str(error))) from error
+        raise PerPathError(override.paths, error) from error
 
 
 class Settings(BaseModel):
@@ -171,7 +166,7 @@ class Settings(BaseModel):
         top_level = self._top_level()
         _ = (
             Arr(self.per_path.root)
-            .map(lambda override: _coherent(override, top_level))
+            .map(lambda override: _validated_entry(override, top_level))
             .to_list()
         )
         return self
