@@ -68,7 +68,7 @@ When a framework dictates the same name everywhere — `factory_boy` hooks take 
 name instead:
 
 ```
-noprim --ignore-names kwargs --ignore-names size
+noprim check --ignore-names kwargs --ignore-names size .
 ```
 
 Names are matched on parameters and attributes only; a return type carries the

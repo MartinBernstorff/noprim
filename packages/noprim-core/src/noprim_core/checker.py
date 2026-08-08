@@ -66,7 +66,8 @@ class DeniedTypes(RootModel[frozenset[str]]):
 
 
 class IgnoredNames(RootModel[frozenset[str]]):
-    pass
+    def contains(self, name: "Qualname") -> "Verdict":
+        return Verdict(name.root in self.root)
 
 
 class CheckConfig(BaseModel):
@@ -355,7 +356,7 @@ def _sites_in(body: list[ast.stmt], scope: Qualname) -> Arr[Site]:
 def _named_as_ignored(site: Site, ignored: IgnoredNames) -> Verdict:
     # A return type carries the function's name, not a symbol name of its own.
     return Verdict(
-        site.surface != Surface.RETURN and site.qualname.leaf().root in ignored.root
+        site.surface != Surface.RETURN and bool(ignored.contains(site.qualname.leaf()))
     )
 
 
