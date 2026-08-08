@@ -3,7 +3,7 @@ import pytest
 from noprim_core.annotations import AnnotationText, names_in_text
 from noprim_core.config import CheckConfig, DeniedTypes
 from noprim_core.rules.primitive_attribute import PrimitiveAttribute
-from noprim_core.rules.registry import default_selection
+from noprim_core.rules.registry import core_selection
 from noprim_core.site import ColumnNumber, LineNumber, Qualname, Site, Surface
 
 
@@ -19,7 +19,7 @@ def _site(surface: Surface, annotation: AnnotationText) -> Site:
 
 
 def _config(denied: DeniedTypes) -> CheckConfig:
-    return CheckConfig(selection=default_selection(), denied=denied)
+    return CheckConfig(selection=core_selection(), denied=denied)
 
 
 @pytest.mark.parametrize(

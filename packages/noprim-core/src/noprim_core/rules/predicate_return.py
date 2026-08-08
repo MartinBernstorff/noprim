@@ -18,7 +18,7 @@ class PredicateReturn(Rule):
     code = RuleCode("NOPRIM007")
     name = RuleName("predicate-return")
     example = RuleExample("def is_ready() -> bool")
-    on_by_default = Verdict(root=False)
+    in_core = Verdict(root=False)
 
     @override
     def applies(self, site: Site, config: CheckConfig) -> Verdict:

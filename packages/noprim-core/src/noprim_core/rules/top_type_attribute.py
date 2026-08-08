@@ -11,7 +11,7 @@ class TopTypeAttribute(Rule):
     code = RuleCode("NOPRIM006")
     name = RuleName("top-type-attribute")
     example = RuleExample("class Order: meta: Any")
-    on_by_default = Verdict(root=False)
+    in_core = Verdict(root=False)
 
     @override
     def applies(self, site: Site, config: CheckConfig) -> Verdict:

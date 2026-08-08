@@ -11,7 +11,7 @@ class TopTypeReturn(Rule):
     code = RuleCode("NOPRIM005")
     name = RuleName("top-type-return")
     example = RuleExample("def payload() -> Any")
-    on_by_default = Verdict(root=False)
+    in_core = Verdict(root=False)
 
     @override
     def applies(self, site: Site, config: CheckConfig) -> Verdict:

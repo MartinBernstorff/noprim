@@ -8,7 +8,7 @@ from noprim_core.rules.code import RuleCode, Selector, Selectors
 from noprim_core.rules.preset import Preset
 from noprim_core.rules.registry import (
     UnknownSelectorError,
-    default_selection,
+    core_selection,
     preset_selection,
 )
 from noprim_core.settings import (
@@ -45,13 +45,13 @@ def test_defaults_resolve_to_the_default_deny_list() -> None:
     assert Settings().resolve(_ANY).denied == DeniedTypes.default()
 
 
-def test_defaults_resolve_to_the_default_selection() -> None:
-    assert Settings().resolve(_ANY).selection == default_selection()
+def test_defaults_resolve_to_every_rule() -> None:
+    assert Settings().resolve(_ANY).selection == preset_selection(Preset.ALL)
 
 
 def test_a_preset_is_the_base_selection_and_is_spelled_as_a_string() -> None:
-    settings = Settings.model_validate({"preset": "all"})
-    assert settings.resolve(_ANY).selection == preset_selection(Preset.ALL)
+    settings = Settings.model_validate({"preset": "core"})
+    assert settings.resolve(_ANY).selection == core_selection()
 
 
 def test_a_preset_that_names_nothing_is_rejected() -> None:
@@ -387,10 +387,10 @@ def test_allowing_a_name_that_is_not_denied_is_rejected() -> None:
     assert _raised(caught.value, NotOnDenyListError)
 
 
-def test_typer_arguments_are_exempt_by_default() -> None:
-    assert Settings().resolve(_ANY).exempt_typer_args
+def test_typer_arguments_are_reported_by_default() -> None:
+    assert not Settings().resolve(_ANY).exempt_typer_args
 
 
 def test_exempt_typer_args_is_carried_through() -> None:
-    settings = Settings.model_validate({"exempt-typer-args": False})
-    assert not settings.resolve(_ANY).exempt_typer_args
+    settings = Settings.model_validate({"exempt-typer-args": True})
+    assert settings.resolve(_ANY).exempt_typer_args

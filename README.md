@@ -19,27 +19,32 @@ Every violation names the rule that fired, and rules are numbered by smell and b
 surface — so a codebase drowning in return types can silence `NOPRIM002` without
 allowing `int` everywhere.
 
+Every rule runs unless you turn it off. A codebase that has not configured noprim sees
+everything noprim has to say and narrows from there, rather than discovering later that
+a rule existed.
+
 ```
-Code       Rule                 Flags                      Default
-NOPRIM001  primitive-parameter  def send(to: str) -> None  on
-NOPRIM002  primitive-return     def total() -> int         on
-NOPRIM003  primitive-attribute  class Order: id: str       on
-NOPRIM004  top-type-parameter   def send(to: Any) -> None  off
-NOPRIM005  top-type-return      def payload() -> Any       off
-NOPRIM006  top-type-attribute   class Order: meta: Any     off
-NOPRIM007  predicate-return     def is_ready() -> bool     off
+Code       Rule                 Flags                      In core
+NOPRIM001  primitive-parameter  def send(to: str) -> None  yes
+NOPRIM002  primitive-return     def total() -> int         yes
+NOPRIM003  primitive-attribute  class Order: id: str       yes
+NOPRIM004  top-type-parameter   def send(to: Any) -> None  no
+NOPRIM005  top-type-return      def payload() -> Any       no
+NOPRIM006  top-type-attribute   class Order: meta: Any     no
+NOPRIM007  predicate-return     def is_ready() -> bool     no
 ```
 
-`--preset` chooses which set to start from — `default` for the rules marked on above,
-`all` for every rule there is. `--select` replaces that set outright,
-`--extend-select` adds to it and `--ignore` subtracts, all three taking code prefixes
-as ruff does. A selector that names no rule is an error.
+`--preset` chooses which set to start from — `all` for every rule there is, which is
+what you get without one, and `core` for the three marked above, the rules a codebase
+almost always wants first. `--select` replaces that set outright, `--extend-select`
+adds to it and `--ignore` subtracts, all three taking code prefixes as ruff does. A
+selector that names no rule is an error.
 
 ```console
-$ noprim check --ignore NOPRIM002 .          # every default rule but return types
-$ noprim check --extend-select NOPRIM004 .   # the defaults, plus Any on parameters
-$ noprim check --preset all .                # every rule there is
-$ noprim check --preset all --ignore NOPRIM007 .   # every rule but predicates
+$ noprim check .                             # every rule there is
+$ noprim check --ignore NOPRIM007 .          # every rule but predicates
+$ noprim check --preset core .               # parameters, returns and attributes
+$ noprim check --preset core --extend-select NOPRIM004 .   # those, plus Any on parameters
 ```
 
 The deny-list covers the builtins, the stdlib value types and the containers — each
@@ -73,7 +78,7 @@ tuple      RootModel[tuple[T, ...]​]
 `Any` and `object` are not on it. They are top types, not primitives: they say the
 type is unknown rather than too narrow, and `object` is the right annotation for
 `**kwargs` you never inspect. That is a different smell, so it has rules of its own —
-`NOPRIM004` to `NOPRIM006`, off until selected. Those rules are all or nothing, so
+`NOPRIM004` to `NOPRIM006`, outside `core`. Those rules are all or nothing, so
 `--allow Any` is an error; `--deny Any` still works if you want one of them on the
 deny-list by itself, reported as an ordinary primitive.
 
@@ -92,19 +97,22 @@ Some signatures are not the author's to choose, so noprim does not report them:
   are untouched.
 - **Predicates** — functions returning a bare `bool`. A domain type around the answer
   to a yes-or-no question rarely earns its keep, so `NOPRIM002` leaves them to
-  `NOPRIM007`, which is off by default. Only the bare return type is carved out: a
-  `bool` parameter, attribute, `list[bool]` or `bool | None` is still reported.
+  `NOPRIM007` — the rule to `--ignore` if you agree. Only the bare return type is
+  carved out: a `bool` parameter, attribute, `list[bool]` or `bool | None` is still
+  reported.
 - **`self` and `cls`.**
 - **`Literal[...]` arguments**, which are values rather than types.
 - **Parameters of pytest tests and fixtures**, in files matching `test_*.py` or
   `*_test.py`. pytest decides what a fixture injects and what `parametrize` feeds in,
   so the parameter type is not a free choice. Return types and attributes in those
   files are still checked, as are ordinary helpers that happen to live beside tests.
-- **`bool` parameters of Typer commands**, unless `exempt-typer-args` is turned off.
-  A bare boolean flag has no other spelling: click decides flag-ness from the annotation
-  being literally `bool`, so wrapping it makes `--dry-run` start demanding an argument.
-  Only `bool` — a `str` or a `Path` option has real alternatives, and is reported with
-  them named. Matched on the attribute the app object is asked for — `command` or
+- **`bool` parameters of Typer commands**, once `exempt-typer-args` is turned on. It is
+  off by default, like every exemption a config key controls, so those parameters are
+  reported until you say otherwise. A bare boolean flag has no other spelling: click
+  decides flag-ness from the annotation being literally `bool`, so wrapping it makes
+  `--dry-run` start demanding an argument. Only `bool` — a `str` or a `Path` option has
+  real alternatives, and is reported with them named. Matched on the attribute the app
+  object is asked for — `command` or
   `callback` — so it holds however that object is named, while unrelated names like
   `command_runner` and a bare `@command`, which Typer never spells, stay checked. Return
   types are still checked, as are helpers and nested functions.
@@ -165,19 +173,19 @@ inside a function, is a class you wrote and stays checked. Everything inside a m
 body is skipped, however deeply nested, so the blast radius is whatever you deliberately
 put in there.
 
-A Typer command is the same story told the other way. Its `bool` flags are exempt by
-default, because nothing else can spell them, and every other primitive is reported with
-the way out named:
+A Typer command is the same story told the other way, and every primitive in one is
+reported with the way out named:
 
 ```
 cli.py:7:17: NOPRIM001 parameter "env" is annotated "str"; Typer renders an enum.Enum natively, and typer.Option(parser=...) takes any type
-Checked 1 file in 31ms - found 1 violation
+cli.py:7:31: NOPRIM001 parameter "dry_run" is annotated "bool"
+Checked 1 file in 31ms - found 2 violations
 ```
 
 Both fixes are real: an `enum.Enum` renders as `[dev|prod]` in `--help` with no extra
-work, and `typer.Option(parser=...)` takes any type at all. `--no-exempt-typer-args`
-drops the last exemption too, for a codebase that would rather see the `bool` flags and
-suppress them a line at a time.
+work, and `typer.Option(parser=...)` takes any type at all. The `bool` flag is the one
+with no way out — nothing else can spell it — so `--exempt-typer-args` stops reporting
+those, for a codebase that would rather not suppress them a line at a time.
 
 ## Flags
 
@@ -189,31 +197,31 @@ suppress them a line at a time.
 │   paths      <path>  Files or directories to check.                          │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --allow                                    <str>          Remove a type from │
+│ --allow                                      <str>        Remove a type from │
 │                                                           the deny-list.     │
 │                                                           Repeatable.        │
-│ --deny                                     <str>          Add a type to the  │
+│ --deny                                       <str>        Add a type to the  │
 │                                                           deny-list.         │
 │                                                           Repeatable.        │
-│ --ignore-names                             <str>          Skip parameters    │
+│ --ignore-names                               <str>        Skip parameters    │
 │                                                           and attributes     │
 │                                                           matching this      │
 │                                                           glob. Repeatable.  │
-│ --ignore-param-n…                          <str>          Skip parameters    │
+│ --ignore-param-na…                           <str>        Skip parameters    │
 │                                                           matching this      │
 │                                                           glob. Repeatable.  │
-│ --ignore-attribu…                          <str>          Skip attributes    │
+│ --ignore-attribut…                           <str>        Skip attributes    │
 │                                                           matching this      │
 │                                                           glob. Repeatable.  │
-│ --ignore-inner-c…                          <str>          Skip the body of a │
+│ --ignore-inner-cl…                           <str>        Skip the body of a │
 │                                                           nested class       │
 │                                                           matching this      │
 │                                                           glob. Repeatable.  │
-│ --exempt-typer-a…      --no-exempt-typ…                   Skip bool          │
+│ --exempt-typer-ar…      --no-exempt-type…                 Skip bool          │
 │                                                           parameters of a    │
 │                                                           Typer command or   │
 │                                                           callback.          │
-│ --exclude                                  <str>          Glob to skip while │
+│ --exclude                                    <str>        Glob to skip while │
 │                                                           walking. Gitignore │
 │                                                           syntax, anchored   │
 │                                                           at the config      │
@@ -221,24 +229,24 @@ suppress them a line at a time.
 │                                                           or the repo root   │
 │                                                           when there is      │
 │                                                           none. Repeatable.  │
-│ --preset                                   <default|all>  Which rules to     │
+│ --preset                                     <core|all>   Which rules to     │
 │                                                           start from before  │
 │                                                           select,            │
 │                                                           extend-select and  │
 │                                                           ignore.            │
-│ --select                                   <str>          Run these rule     │
+│ --select                                     <str>        Run these rule     │
 │                                                           codes instead of   │
-│                                                           the defaults.      │
+│                                                           the preset's.      │
 │                                                           Prefixes count.    │
 │                                                           Repeatable.        │
-│ --extend-select                            <str>          Run these rule     │
+│ --extend-select                              <str>        Run these rule     │
 │                                                           codes as well as   │
 │                                                           the selected ones. │
 │                                                           Repeatable.        │
-│ --ignore                                   <str>          Drop these rule    │
+│ --ignore                                     <str>        Drop these rule    │
 │                                                           codes from the     │
 │                                                           run. Repeatable.   │
-│ --baseline                                 <path>         Suppress           │
+│ --baseline                                   <path>       Suppress           │
 │                                                           violations         │
 │                                                           recorded in this   │
 │                                                           file, writing it   │
@@ -246,18 +254,18 @@ suppress them a line at a time.
 │ --write-baseline                                          Rewrite an         │
 │                                                           existing baseline  │
 │                                                           file.              │
-│ --quiet            -q                                     Suppress the       │
+│ --quiet             -q                                    Suppress the       │
 │                                                           summary.           │
 │ --statistics                                              Print counts       │
 │                                                           instead of one     │
 │                                                           line each.         │
-│ --group-by                                 <str>          Axes to count      │
+│ --group-by                                   <str>        Axes to count      │
 │                                                           --statistics       │
 │                                                           along: rule, type, │
 │                                                           name or path.      │
 │                                                           Comma-separated,   │
 │                                                           repeatable.        │
-│ --output-format                            <text|json>    How to print what  │
+│ --output-format                              <text|json>  How to print what  │
 │                                                           was found.         │
 │                                                           [default: text]    │
 │ --help                                                    Show this message  │
@@ -328,14 +336,18 @@ ignore-names = ["kwargs", "size"]
 ignore-param-names = ["value", "*_contains"]
 ignore-attribute-names = ["_*"]
 ignore-inner-classes = ["Meta"]
-exempt-typer-args = false
-preset = "all"
+exempt-typer-args = true
+preset = "core"
 extend-select = ["NOPRIM004"]
 ignore = ["NOPRIM002"]
 ```
 
 Every key is a flag of the same name, and passing that flag replaces the key outright
 rather than adding to it — `--deny Enum` ignores whatever `deny` the file set.
+
+Every rule ships on and every exemption ships off, so the rule keys here only ever
+narrow what you already get. The deny-list is the one axis with room above the default:
+`deny` adds to it.
 
 ### Per-path overrides
 

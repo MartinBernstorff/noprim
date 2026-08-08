@@ -181,12 +181,16 @@ class Settings(NameKeys):
     allow: AllowedNames = AllowedNames(())
     deny: DeniedNames = DeniedNames(())
     exclude: PathPatterns = PathPatterns(())
-    preset: Preset = Preset.DEFAULT
+    # Every rule: an unconfigured run says everything it has to say, and a codebase
+    # narrows from there rather than discovering later that a rule existed.
+    preset: Preset = Preset.ALL
     # None, not an empty tuple: unset means the preset's rules, not no rules.
     select: Selectors | None = None
     extend_select: Selectors = Selectors(())
     ignore: Selectors = Selectors(())
-    exempt_typer_args: Verdict = Verdict(root=True)
+    # Off, like every other exemption a key controls: hiding a violation is the
+    # codebase's decision to make, not one it inherits.
+    exempt_typer_args: Verdict = Verdict(root=False)
     per_path: PathOverrides = PathOverrides(())
 
     @model_validator(mode="after")

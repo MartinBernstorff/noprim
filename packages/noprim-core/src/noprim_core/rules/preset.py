@@ -2,5 +2,5 @@ from enum import StrEnum
 
 
 class Preset(StrEnum):
-    DEFAULT = "default"
+    CORE = "core"
     ALL = "all"

@@ -21,7 +21,7 @@ class PrimitiveParameter(Rule):
     code = RuleCode("NOPRIM001")
     name = RuleName("primitive-parameter")
     example = RuleExample("def send(to: str) -> None")
-    on_by_default = Verdict(root=True)
+    in_core = Verdict(root=True)
 
     @override
     def applies(self, site: Site, config: CheckConfig) -> Verdict:

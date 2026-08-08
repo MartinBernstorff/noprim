@@ -12,7 +12,7 @@ class PrimitiveReturn(Rule):
     code = RuleCode("NOPRIM002")
     name = RuleName("primitive-return")
     example = RuleExample("def total() -> int")
-    on_by_default = Verdict(root=True)
+    in_core = Verdict(root=True)
 
     @override
     def applies(self, site: Site, config: CheckConfig) -> Verdict:

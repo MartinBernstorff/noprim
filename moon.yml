@@ -89,10 +89,11 @@ tasks:
       - '@group(sources)'
       - '@group(manifests)'
 
-  # Dogfooding: every rule on, no --allow flags. The doc fixtures are deliberately
-  # full of violations, so they are the one thing not held to it.
+  # Dogfooding: the shipped defaults, no config file and no --allow flags. The doc
+  # fixtures are deliberately full of violations, so they are the one thing not held
+  # to them.
   noprim:
-    script: 'uv run noprim check --preset all --exclude "docs-support/fixtures/**" .'
+    script: 'uv run noprim check --exclude "docs-support/fixtures/**" .'
     inputs:
       - '@group(sources)'
       - '@group(manifests)'

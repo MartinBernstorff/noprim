@@ -3,7 +3,7 @@ import pytest
 from noprim_core.annotations import AnnotationText, names_in_text
 from noprim_core.config import CheckConfig, DeniedTypes
 from noprim_core.rules.predicate_return import PredicateReturn
-from noprim_core.rules.registry import default_selection
+from noprim_core.rules.registry import core_selection
 from noprim_core.site import ColumnNumber, LineNumber, Qualname, Site, Surface
 
 
@@ -19,7 +19,7 @@ def _site(surface: Surface, annotation: AnnotationText) -> Site:
 
 
 def _config(denied: DeniedTypes) -> CheckConfig:
-    return CheckConfig(selection=default_selection(), denied=denied)
+    return CheckConfig(selection=core_selection(), denied=denied)
 
 
 @pytest.mark.parametrize(
@@ -65,5 +65,5 @@ def test_allowing_bool_takes_predicates_off_the_table() -> None:
     )
 
 
-def test_is_off_by_default() -> None:
-    assert not default_selection().contains(PredicateReturn().code)
+def test_is_outside_the_core_preset() -> None:
+    assert not core_selection().contains(PredicateReturn().code)

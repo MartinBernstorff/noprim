@@ -58,7 +58,7 @@ Once the file exists, a `check` run never writes to disk. Entries that no longer
 ## Rules
 
 A rule is one module under `noprim_core/rules/`, holding one class that **inherits
-`Rule`** and declares its `code`, whether it is `on_by_default`, and
+`Rule`** and declares its `code`, whether it is `in_core`, and
 `applies(site, config) -> Verdict` — plus a table-driven test beside it over `Site`
 values. `rules/registry.py` lists them in one tuple; adding a rule is a new file and
 one line there, so two rules being added at once touch disjoint files.
@@ -66,7 +66,7 @@ one line there, so two rules being added at once touch disjoint files.
 Inherit `Rule` explicitly rather than matching it structurally: a forgotten `code` or
 a mistyped `applies` then fails at the class itself, instead of silently at runtime or
 far away at the registry's annotation. `Rule` stays a `Protocol`, so it is still
-satisfiable structurally where that is useful. Its `code` and `on_by_default` are
+satisfiable structurally where that is useful. Its `code` and `in_core` are
 properties for the same reason — a subclass that never sets a plain declared attribute
 typechecks clean, one that never implements a property does not.
 
@@ -91,9 +91,10 @@ walk and never becomes a site.
 
 A Typer command's `bool` parameters are the framework's rather than the author's — click
 decides flag-ness from the annotation being literally `bool`, so there is no other
-spelling of a bare flag — and `exempt-typer-args` covers them, on by default. It
-suppresses rather than skips, like pytest ownership, because a config key can turn it
-off.
+spelling of a bare flag — and `exempt-typer-args` covers them. It is off by default like
+every other exemption a config key controls: the parameter is still the author's to
+suppress, and a default that hid it would decide that for them. It suppresses rather
+than skips, like pytest ownership, because a config key can turn it on and off.
 
 Only `bool`, deliberately. A `str` or `Path` option *can* become an `enum.Enum` or a
 `typer.Option(parser=...)`, so exempting it would wave through a case with a real fix.
@@ -161,9 +162,17 @@ so it lives in core alongside `pathspec`. `noprim_io.settings` does the I/O half
 walking up for the file and reading it through `pydantic-settings`' TOML sources.
 
 `preset` names the base selection the other rule keys work on top of, as pyrefly's does:
-`select` replaces it, `extend-select` adds and `ignore` subtracts. Only `default` and
-`all` exist, because a rule is either on by default or it is not — there is no third
-tier for a `strict` between them to name.
+`select` replaces it, `extend-select` adds and `ignore` subtracts. Only `core` and `all`
+exist, because a rule is either one a codebase almost always wants first or it is not —
+there is no third tier for a `strict` between them to name.
+
+**Every default is the strictest setting available.** `preset` defaults to `all` and
+every exemption key defaults to off, so an unconfigured run says everything noprim has
+to say and a config file is a record of what a codebase chose to stop hearing. A rule
+that shipped off by default would be one nobody discovers; the `core` preset is how a
+codebase asks for the smaller set, deliberately. `in_core` is therefore not "on by
+default" — it names membership of a preset nobody starts in. Adding a rule means
+deciding whether it belongs in `core`, never whether it is on.
 
 A name-matching key comes in three: `ignore-param-names` and `ignore-attribute-names`
 name one surface each, and `ignore-names` is the pair of them, kept because it predates
@@ -219,7 +228,7 @@ Three things keep this honest, and all will fail loudly if you break them:
   exception, carved out in `moon run :modularity`: a public surface is what an `__all__`
   is *for*, and `test_public_surface.py` fails when it drifts from the classes the
   package defines.
-- **A `Verdict` never unwraps.** It defines `__bool__`, so it reads as the answer it is: `if site.covers(v):`, `.filter(rule.on_by_default)`, `assert _raised(...)`. `and_`, `or_`, `negated` and `Verdict.any` compose several into one without leaving `Verdict` terms. Neither `.root` nor `bool(v)` should appear at a call site — the only `.root` is inside `Verdict` itself. Two settings buy this and are load-bearing: `implicit-bool = false` in `pyrefly.toml`, and `iterpy>=1.15`, whose `Arr.filter` takes a `Callable[[T], object]`.
+- **A `Verdict` never unwraps.** It defines `__bool__`, so it reads as the answer it is: `if site.covers(v):`, `.filter(rule.in_core)`, `assert _raised(...)`. `and_`, `or_`, `negated` and `Verdict.any` compose several into one without leaving `Verdict` terms. Neither `.root` nor `bool(v)` should appear at a call site — the only `.root` is inside `Verdict` itself. Two settings buy this and are load-bearing: `implicit-bool = false` in `pyrefly.toml`, and `iterpy>=1.15`, whose `Arr.filter` takes a `Callable[[T], object]`.
 - **Prefer iterators over manual for-loops.** Use `iterpy`: `Arr([1,2,3]).map(lambda x: x+1).filter(lambda x: x>2).to_list()` — pipelines read top-to-bottom without accumulator state.
 - **Avoid constants.** Before defining one, ask whether it should be an argument from the caller — a constant is a decision frozen at the wrong layer.
 - **Default to no comments.** If code needs a comment to be understood, fix the code. When you must, one line on *why* (constraint, invariant, bug), never *what*. No docstrings.

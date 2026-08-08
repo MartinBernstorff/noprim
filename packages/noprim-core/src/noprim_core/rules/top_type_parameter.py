@@ -11,7 +11,7 @@ class TopTypeParameter(Rule):
     code = RuleCode("NOPRIM004")
     name = RuleName("top-type-parameter")
     example = RuleExample("def send(to: Any) -> None")
-    on_by_default = Verdict(root=False)
+    in_core = Verdict(root=False)
 
     @override
     def applies(self, site: Site, config: CheckConfig) -> Verdict:
