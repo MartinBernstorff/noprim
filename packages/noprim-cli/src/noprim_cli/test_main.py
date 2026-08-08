@@ -318,6 +318,25 @@ def test_a_name_flag_skips_only_its_own_surface(
     assert result.stdout.splitlines() == [f"{target}:{remaining}"]
 
 
+def test_ignore_inner_classes_skips_a_nested_body_but_not_a_top_level_one(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text(
+        "class Meta:\n    fields: list[str] = []\n\n"
+        "class Filter:\n    class Meta:\n        fields: list[str] = []\n"
+    )
+
+    result = runner.invoke(
+        app, ["check", "--ignore-inner-classes", "Meta", str(target)]
+    )
+
+    assert result.stdout.splitlines() == [
+        f'{target}:2:13: NOPRIM003 attribute "fields" is annotated "list[str]"'
+    ]
+    assert "found 1 violation, 1 suppressed" in result.stderr
+
+
 def test_deny_adds_type_to_deny_list(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
     _ = target.write_text("def f(amount: Money) -> None: ...\n")

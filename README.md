@@ -134,6 +134,18 @@ every rule on that surface, not just the primitive one — the point is that the
 never yours to choose. A return type carries the function's name, not one of its own, so
 it is never skipped this way.
 
+Sometimes it is a whole block the framework dictates rather than one name — Django's and
+django-filter's `class Meta`, whose shape is the framework's to decide. Skip the nested
+class instead:
+
+```
+noprim check --ignore-inner-classes Meta .
+```
+
+Only a *nested* class matches: a module-level `class Meta` is a class you wrote, and
+stays checked. Everything inside a matching body is skipped, however deeply nested, so
+the blast radius is whatever you deliberately put in there.
+
 ## Flags
 
 | Flag | Effect |
@@ -147,6 +159,7 @@ it is never skipped this way.
 | `--ignore-names GLOB` | Skip parameters and attributes matching `GLOB`. Repeatable. |
 | `--ignore-param-names GLOB` | Skip parameters matching `GLOB`. Repeatable. |
 | `--ignore-attribute-names GLOB` | Skip attributes matching `GLOB`. Repeatable. |
+| `--ignore-inner-classes GLOB` | Skip the body of a nested class matching `GLOB`. Repeatable. |
 | `--exclude GLOB` | Skip paths while walking. Gitignore syntax, anchored at the config file's directory, or the repo root when there is no config. Repeatable. |
 | `--quiet`, `-q` | Suppress the trailing summary. |
 | `--statistics` | Print counts instead of one line per violation. |
@@ -216,6 +229,7 @@ exclude = ["generated/**"]
 ignore-names = ["kwargs", "size"]
 ignore-param-names = ["value", "*_contains"]
 ignore-attribute-names = ["_*"]
+ignore-inner-classes = ["Meta"]
 preset = "all"
 extend-select = ["NOPRIM004"]
 ignore = ["NOPRIM002"]
@@ -240,13 +254,15 @@ paths = ["test_infra/**", "django_app/**"]
 allow = ["str", "int", "bool"]
 ignore = ["NOPRIM002"]
 ignore-param-names = ["name", "value"]
+ignore-inner-classes = ["Meta"]
 ```
 
 An override's name patterns are appended to the top level's, and gitignore's
 last-match-wins applies across the join — so `ignore-param-names = ["!value"]` in an
 override puts `value` back under the rules for the paths it matches.
 
-Overrides carry `allow`, `deny`, `ignore` and the three `ignore-*-names` keys.
+Overrides carry `allow`, `deny`, `ignore`, the three `ignore-*-names` keys and
+`ignore-inner-classes`.
 `exclude` is not among them — it decides which files are walked at all, before any path
 has a config.
 

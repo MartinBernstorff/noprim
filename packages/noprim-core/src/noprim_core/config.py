@@ -1,11 +1,12 @@
 from functools import cached_property
 
 import pathspec
+from iterpy import Arr
 from pydantic import BaseModel, Field, RootModel
 
 from noprim_core.annotations import TypeNames
 from noprim_core.rules.code import Selection
-from noprim_core.site import Qualname
+from noprim_core.site import ClassChain, Qualname
 from noprim_types.verdict import Verdict
 
 
@@ -62,6 +63,9 @@ class NamePatterns(RootModel[tuple[str, ...]]):
     def matches(self, name: Qualname) -> Verdict:
         return Verdict(self._spec.match_file(name.root))
 
+    def matches_any(self, names: ClassChain) -> Verdict:
+        return Verdict.any(Arr(names.root).map(self.matches))
+
     def joined(self, other: "NamePatterns") -> "NamePatterns":
         return NamePatterns(self.root + other.root)
 
@@ -75,3 +79,4 @@ class CheckConfig(BaseModel):
     top_types: TopTypes = Field(default_factory=TopTypes.default)
     ignored_parameter_names: NamePatterns = NamePatterns(())
     ignored_attribute_names: NamePatterns = NamePatterns(())
+    ignored_inner_classes: NamePatterns = NamePatterns(())

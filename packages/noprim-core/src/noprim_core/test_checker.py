@@ -342,6 +342,56 @@ def test_a_parameter_and_an_attribute_of_one_name_are_ignored_apart() -> None:
     ]
 
 
+_FILTER = """\
+class Filter:
+    name: str
+
+    class Meta:
+        fields: list[str] = []
+"""
+
+
+def _ignoring_meta() -> CheckConfig:
+    return CheckConfig(
+        selection=default_selection(), ignored_inner_classes=NamePatterns(("Meta",))
+    )
+
+
+def test_ignores_the_body_of_a_configured_inner_class() -> None:
+    violations = _check(SourceCode(_FILTER), _ignoring_meta())
+    assert [v.qualname.root for v in violations] == ["Filter.name"]
+
+
+def test_an_ignored_inner_class_is_suppressed_rather_than_never_found() -> None:
+    outcome = check_source(SourceCode(_FILTER), Filename("a.py"), _ignoring_meta())
+    assert [(s.violation.qualname.root, str(s.reason)) for s in outcome.suppressed] == [
+        ("Filter.Meta.fields", "inner-class")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("class Meta:\n    fields: list[str] = []\n", ["Meta.fields"]),
+        ("class F:\n    class Meta:\n        fields: list[str] = []\n", []),
+        (
+            "class F:\n    class Inner:\n        class Meta:\n            f: list[str] = []\n",
+            [],
+        ),
+        (
+            "class F:\n    class Other:\n        fields: list[str] = []\n",
+            ["F.Other.fields"],
+        ),
+        ("class F:\n    class Meta:\n        def m(self, x: int) -> None: ...\n", []),
+    ],
+)
+def test_only_a_nested_class_of_that_name_is_ignored(
+    source: str, expected: list[str]
+) -> None:
+    violations = _check(SourceCode(source), _ignoring_meta())
+    assert [v.qualname.root for v in violations] == expected
+
+
 @pytest.mark.parametrize(
     ("source", "expected"),
     [

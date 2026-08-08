@@ -104,7 +104,7 @@ the enclosing function's name and decorators plus the module's filename — and
 Rules fire unconditionally; `noprim_core.suppression` is the one place that decides
 whether a violation is reported, and returns `(reported, suppressed)` rather than a
 silently shortened list. Each suppressed violation names its `SuppressionReason` —
-`comment`, `file-comment`, `ignored-name`, `pytest` or `baseline` — so "why was this
+`comment`, `file-comment`, `ignored-name`, `inner-class`, `pytest` or `baseline` — so "why was this
 not reported?" has a single answer, and the summary can count them all rather than just
 the baseline's. Suppression is not a rule.
 
@@ -154,6 +154,14 @@ qualname's leaf, and all three are override keys too.
 They suppress by surface, not by code, so ignoring a parameter name silences every rule
 that fires on a parameter — `NOPRIM004` as well as `NOPRIM001`. The author is saying the
 name is not theirs to choose, which is true of the whole annotation or none of it.
+
+`ignore-inner-classes` names a *place* rather than a surface, so it is a fourth key and
+not part of `ignore-names`: it skips everything inside a nested class whose name matches,
+which is what a framework-dictated `class Meta` is. Only nested classes match — a
+module-level class of that name is one the author chose — and the walk is what knows the
+difference, so `Site.enclosing_classes` carries the chain and `ClassChain.inner()` drops
+the outermost. Like pytest ownership it suppresses rather than skips, so the block still
+shows up in the `N suppressed` count.
 
 An override's patterns are appended to the top level's and compiled as one spec, so
 gitignore's last-match-wins holds across the join: a per-path `!value` re-includes a name

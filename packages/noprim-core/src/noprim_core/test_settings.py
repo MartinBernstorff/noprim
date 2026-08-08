@@ -180,6 +180,31 @@ def test_an_override_ignores_names_for_the_paths_it_matches(
     assert not outside.ignored_parameter_names.matches(Qualname("name"))
 
 
+def test_inner_class_names_are_their_own_key() -> None:
+    resolved = Settings(ignore_names=NamePatterns(("Meta",))).resolve(_ANY)
+    assert not resolved.ignored_inner_classes.matches(Qualname("Meta"))
+    assert (
+        Settings(ignore_inner_classes=NamePatterns(("Meta",)))
+        .resolve(_ANY)
+        .ignored_inner_classes.matches(Qualname("Meta"))
+    )
+
+
+def test_an_override_ignores_inner_classes_for_the_paths_it_matches() -> None:
+    settings = Settings(
+        per_path=(
+            PathOverride(
+                paths=PathPatterns(("django_app/**",)),
+                ignore_inner_classes=NamePatterns(("Meta",)),
+            ),
+        )
+    )
+    inside = settings.resolve(RelativePath("django_app/a.py"))
+    outside = settings.resolve(RelativePath("domain/a.py"))
+    assert inside.ignored_inner_classes.matches(Qualname("Meta"))
+    assert not outside.ignored_inner_classes.matches(Qualname("Meta"))
+
+
 def test_an_override_can_re_include_a_name_the_top_level_ignored() -> None:
     settings = Settings(
         ignore_param_names=NamePatterns(("value",)),

@@ -9,6 +9,7 @@ from noprim_core.config import CheckConfig
 from noprim_core.rules.registry import RULES
 from noprim_core.rules.rule import Rule
 from noprim_core.site import (
+    ClassChain,
     ColumnNumber,
     Filename,
     LineNumber,
@@ -21,6 +22,7 @@ from noprim_core.source import SourceCode
 from noprim_core.suppression import (
     IgnoredFile,
     IgnoredLines,
+    InnerClassOwned,
     PytestOwned,
     SuppressionOutcome,
     Suppressions,
@@ -37,7 +39,11 @@ def _mentions(expressions: Arr[ast.expr], symbol: SymbolName) -> Verdict:
 
 
 def _site(
-    annotation: ast.expr, surface: Surface, qualname: Qualname, owner: Owner
+    annotation: ast.expr,
+    surface: Surface,
+    qualname: Qualname,
+    owner: Owner,
+    classes: ClassChain,
 ) -> Site:
     return Site(
         line=LineNumber(annotation.lineno),
@@ -47,6 +53,7 @@ def _site(
         annotation=AnnotationText(ast.unparse(annotation)),
         names=names_in(annotation),
         owner=owner,
+        enclosing_classes=classes,
     )
 
 
@@ -112,7 +119,10 @@ def _parameter_owner(function: Function, in_pytest_module: Verdict) -> Owner:
 
 
 def _parameter_sites(
-    function: Function, qualname: Qualname, in_pytest_module: Verdict
+    function: Function,
+    qualname: Qualname,
+    classes: ClassChain,
+    in_pytest_module: Verdict,
 ) -> Arr[Site]:
     owner = _parameter_owner(function, in_pytest_module)
     return Arr(
@@ -122,6 +132,7 @@ def _parameter_sites(
                 Surface.PARAMETER,
                 qualname.child(Qualname(arg.arg)),
                 owner,
+                classes,
             )
             for arg in _parameters(function)
             if arg.annotation is not None
@@ -132,34 +143,40 @@ def _parameter_sites(
 def _function_sites(
     function: Function,
     scope: Qualname,
+    classes: ClassChain,
     overloaded: OverloadedNames,
     in_pytest_module: Verdict,
 ) -> Arr[Site]:
     qualname = scope.child(Qualname(function.name))
     if _has_exempt_signature(function, overloaded):
-        return _sites_in(function.body, qualname, in_pytest_module)
+        return _sites_in(function.body, qualname, classes, in_pytest_module)
 
     returns = function.returns
     return Arr(
         [
-            *_parameter_sites(function, qualname, in_pytest_module),
+            *_parameter_sites(function, qualname, classes, in_pytest_module),
             *(
-                [_site(returns, Surface.RETURN, qualname, Owner.AUTHOR)]
+                [_site(returns, Surface.RETURN, qualname, Owner.AUTHOR, classes)]
                 if returns is not None
                 else []
             ),
-            *_sites_in(function.body, qualname, in_pytest_module),
+            *_sites_in(function.body, qualname, classes, in_pytest_module),
         ]
     )
 
 
 def _class_sites(
-    class_def: ast.ClassDef, scope: Qualname, in_pytest_module: Verdict
+    class_def: ast.ClassDef,
+    scope: Qualname,
+    classes: ClassChain,
+    in_pytest_module: Verdict,
 ) -> Arr[Site]:
     if _subclasses_root_model(class_def):
         return Arr([])
 
-    qualname = scope.child(Qualname(class_def.name))
+    name = Qualname(class_def.name)
+    qualname = scope.child(name)
+    enclosing = classes.child(name)
     return Arr(
         [
             *(
@@ -168,11 +185,12 @@ def _class_sites(
                     Surface.ATTRIBUTE,
                     qualname.child(Qualname(ast.unparse(node.target))),
                     Owner.AUTHOR,
+                    enclosing,
                 )
                 for node in class_def.body
                 if isinstance(node, ast.AnnAssign)
             ),
-            *_sites_in(class_def.body, qualname, in_pytest_module),
+            *_sites_in(class_def.body, qualname, enclosing, in_pytest_module),
         ]
     )
 
@@ -189,16 +207,19 @@ def _overloaded_names(body: list[ast.stmt]) -> OverloadedNames:
 
 
 def _sites_in(
-    body: list[ast.stmt], scope: Qualname, in_pytest_module: Verdict
+    body: list[ast.stmt],
+    scope: Qualname,
+    classes: ClassChain,
+    in_pytest_module: Verdict,
 ) -> Arr[Site]:
     overloaded = _overloaded_names(body)
     return (
         Arr(body)
         .map(
             lambda node: (
-                _function_sites(node, scope, overloaded, in_pytest_module)
+                _function_sites(node, scope, classes, overloaded, in_pytest_module)
                 if isinstance(node, Function)
-                else _class_sites(node, scope, in_pytest_module)
+                else _class_sites(node, scope, classes, in_pytest_module)
                 if isinstance(node, ast.ClassDef)
                 else Arr[Site]([])
             )
@@ -232,6 +253,15 @@ def _suppressions(
         lines=IgnoredLines.parse(tokens),
         parameter_names=config.ignored_parameter_names,
         attribute_names=config.ignored_attribute_names,
+        inner_class_owned=InnerClassOwned(
+            frozenset(
+                sites.filter(
+                    lambda site: config.ignored_inner_classes.matches_any(
+                        site.enclosing_classes.inner()
+                    )
+                ).map(lambda site: site.qualname)
+            )
+        ),
         pytest_owned=PytestOwned(
             frozenset(
                 sites.filter(lambda site: site.owner == Owner.PYTEST).map(
@@ -247,7 +277,9 @@ def check_source(
 ) -> SuppressionOutcome:
     tree = ast.parse(source.root, filename=filename.root)
     enabled = Arr(RULES).filter(lambda rule: config.selection.contains(rule.code))
-    sites = _sites_in(tree.body, Qualname(""), _is_pytest_module(filename))
+    sites = _sites_in(
+        tree.body, Qualname(""), ClassChain(()), _is_pytest_module(filename)
+    )
     return _suppressions(source, sites, config).apply(
         sites.map(
             lambda site: _violations_at(site, filename, enabled, config)
