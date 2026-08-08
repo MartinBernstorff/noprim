@@ -19,7 +19,17 @@ fileGroups:
 tasks:
   # Boundaries span packages, so this cannot live in a single package.
   modularity:
-    script: 'uv run tach check && uv run tach check-external'
+    script: |
+      set -euo pipefail
+      uv run tach check
+      uv run tach check-external
+      # ruff has no rule for this: PLC0414 skips __init__.py, and F401 accepts `X as X`.
+      walls="$(find packages -path '*/src/*/__init__.py' -size +0c)"
+      test -z "$walls" || {
+        echo "__init__.py must stay empty; export lists drift:"
+        echo "$walls"
+        exit 1
+      }
     inputs:
       - '@group(sources)'
       - '@group(manifests)'

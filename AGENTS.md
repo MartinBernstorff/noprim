@@ -56,7 +56,7 @@ Always run tasks through moon, never the tool directly: `moon run :test`, not `p
 | `moon run :format` | ruff format |
 | `moon run :format-check` | ruff format --check |
 | `moon run :typecheck` | pyrefly |
-| `moon run :modularity` | tach check + tach check-external |
+| `moon run :modularity` | tach check + tach check-external, and fails on a non-empty `__init__.py` |
 | `moon run :actionlint` | actionlint |
 | `moon run root:smoke` | builds the wheel, installs it into a clean venv, runs it |
 | `moon run :noprim` | noprim against this repo's own source |
