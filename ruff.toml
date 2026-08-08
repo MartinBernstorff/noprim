@@ -1,4 +1,4 @@
-target-version = "py313"
+target-version = "py311"
 line-length = 88
 src = ["packages/noprim-types/src", "packages/noprim-core/src", "packages/noprim-io/src", "packages/noprim-cli/src"]
 

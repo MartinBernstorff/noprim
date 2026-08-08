@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Self
+from typing import Self, TypeVar
 
 import pathspec
 from iterpy import Arr
@@ -15,6 +15,9 @@ from noprim_core.rules.code import Selection, Selectors
 from noprim_core.rules.preset import Preset
 from noprim_core.rules.registry import selection, validate_selectors
 from noprim_types.verdict import Verdict
+
+# PEP 695 syntax would read better, but it is 3.12+ and the floor is 3.11.
+_Gathered = TypeVar("_Gathered")
 
 
 class AllowedNames(RootModel[tuple[str, ...]]):
@@ -137,9 +140,9 @@ class PathOverrides(RootModel[tuple[PathOverride, ...]]):
             tuple(Arr(self.root).filter(lambda override: override.matches(path)))
         )
 
-    def _gathered[T](
-        self, key: Callable[[PathOverride], tuple[T, ...]]
-    ) -> tuple[T, ...]:
+    def _gathered(
+        self, key: Callable[[PathOverride], tuple[_Gathered, ...]]
+    ) -> tuple[_Gathered, ...]:
         return tuple(Arr(self.root).map(key).flatten())
 
     def allowed(self) -> AllowedNames:

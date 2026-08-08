@@ -2,5 +2,5 @@
 [project]
 name = "noprim-cli"
 version = "0.0.0"
-requires-python = ">=3.13"
-dependencies = ["typer>=0.15", "pydantic>=2.11", "iterpy>=1.15"]
+requires-python = ">=3.11"
+dependencies = ["typer>=0.15", "pydantic>=2.11", "iterpy>=1.15", "typing-extensions>=4.12"]

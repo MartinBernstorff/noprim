@@ -1,4 +1,4 @@
-from typing import override
+from typing_extensions import override
 
 from noprim_core.annotations import SymbolName, text_is_exactly
 from noprim_core.config import CheckConfig

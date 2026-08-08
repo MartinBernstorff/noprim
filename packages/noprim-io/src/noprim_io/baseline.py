@@ -1,4 +1,5 @@
 import json
+from os.path import relpath
 from pathlib import Path
 
 from iterpy import Arr
@@ -75,7 +76,9 @@ class _Anchor(RootModel[ExistingDirectory]):
 
     def relative(self, file: SourceFile) -> Filename:
         resolved = file.root.resolve()
-        return Filename(resolved.relative_to(self.root.root, walk_up=True).as_posix())
+        # relpath, not relative_to(walk_up=True): the latter is 3.12+, and a file
+        # outside the anchor must key as `../…` rather than raise.
+        return Filename(Path(relpath(resolved, self.root.root)).as_posix())
 
     def absolute(self, filename: Filename) -> SourceFile:
         return SourceFile((self.root.root / filename.root).resolve())

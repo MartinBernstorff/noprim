@@ -1,8 +1,8 @@
 from enum import StrEnum
-from typing import override
 
 from iterpy import Arr
 from pydantic import BaseModel, Field, RootModel
+from typing_extensions import override
 
 from noprim_core.annotations import AnnotationText
 from noprim_core.baseline import BaselineOutcome

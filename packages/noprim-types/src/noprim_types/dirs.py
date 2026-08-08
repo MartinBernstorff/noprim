@@ -14,9 +14,10 @@ class EnsuredDir(RootModel[Path]):
     @field_validator("root")
     @classmethod
     def _must_be_a_directory(cls, value: Path) -> Path:
-        # follow_symlinks=False: a dangling symlink does not "exist", and mkdir would
-        # then raise FileExistsError past pydantic instead of a ValidationError.
-        if value.exists(follow_symlinks=False) and not value.is_dir():
+        # is_symlink first: a dangling symlink does not "exist", and mkdir would then
+        # raise FileExistsError past pydantic instead of a ValidationError.
+        # Path.exists(follow_symlinks=False) says this in one call, but is 3.12+.
+        if (value.is_symlink() or value.exists()) and not value.is_dir():
             raise NotADirectoryValueError(value)
         value.mkdir(parents=True, exist_ok=True)
         return value

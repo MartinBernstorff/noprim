@@ -1,4 +1,4 @@
-from typing import override
+from typing_extensions import override
 
 from noprim_core.config import CheckConfig
 from noprim_core.rules.code import RuleCode
