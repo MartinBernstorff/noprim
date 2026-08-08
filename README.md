@@ -171,6 +171,10 @@ The two compose: `--statistics --output-format json` emits a `statistics` array 
 entries carry a `count` and one key per requested axis. Neither flag changes the exit
 code — 1 when anything was found, 0 otherwise.
 
+A file that could not be parsed keeps its own line under `--statistics`, and its own
+`errors` entry in either JSON shape: no count can stand in for it, and the violations
+it would have contributed are missing from every count.
+
 ## Configuration
 
 Settings live in `noprim.toml`, or in `pyproject.toml` under `[tool.noprim]`. noprim

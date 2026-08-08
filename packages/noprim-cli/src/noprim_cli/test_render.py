@@ -441,6 +441,40 @@ def test_statistics_aligns_counts_to_the_widest() -> None:
     ]
 
 
+def test_statistics_keeps_reporting_what_would_not_parse() -> None:
+    report = _report((), (_error(Filename("b.py"), LineNumber(3)),), Count(1))
+
+    rendered = _rendered(
+        RunOutcome(report=report), _statistics(GroupAxes((GroupAxis.RULE,)))
+    )
+
+    assert [line.root for line in rendered.stdout] == [
+        "b.py:3:1: syntax error: invalid syntax"
+    ]
+
+
+def test_statistics_as_json_keeps_what_would_not_parse() -> None:
+    report = _report((), (_error(Filename("b.py"), LineNumber(3)),), Count(1))
+
+    document = _as_json(
+        RunOutcome(report=report),
+        RenderOptions(
+            statistics=Verdict(root=True),
+            group_by=GroupAxes((GroupAxis.RULE,)),
+            output_format=OutputFormat.JSON,
+        ),
+    )
+
+    assert document.root["errors"] == [
+        {
+            "path": "b.py",
+            "line": 3,
+            "column": 1,
+            "message": "syntax error: invalid syntax",
+        }
+    ]
+
+
 def test_statistics_of_a_clean_run_prints_nothing() -> None:
     rendered = _rendered(
         RunOutcome(report=_nothing()), _statistics(GroupAxes((GroupAxis.RULE,)))
@@ -464,7 +498,8 @@ def test_statistics_as_json_names_each_axis() -> None:
             {"count": 2, "rule": "NOPRIM001", "path": "a.py"},
             {"count": 1, "rule": "NOPRIM001", "path": "b.py"},
             {"count": 1, "rule": "NOPRIM002", "path": "b.py"},
-        ]
+        ],
+        "errors": [],
     }
 
 

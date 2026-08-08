@@ -8,7 +8,6 @@ from iterpy import Arr
 from pydantic import RootModel, ValidationError
 
 from noprim_cli.render import (
-    DisplayText,
     Duration,
     GroupAxes,
     GroupAxis,
@@ -54,11 +53,21 @@ class GroupByWithoutStatisticsError(typer.BadParameter):
 
 
 class UnknownGroupAxisError(typer.BadParameter):
-    def __init__(self, name: DisplayText) -> None:
+    def __init__(self, name: "AxisName") -> None:
         expected = ", ".join(axis.value for axis in GroupAxis)
         super().__init__(
-            f"--group-by got an unknown axis: {name}; expected one of {expected}"
+            f"--group-by got an unknown axis: {name.root}; expected one of {expected}"
         )
+
+
+class RepeatedGroupAxisError(typer.BadParameter):
+    def __init__(self, name: "AxisName") -> None:
+        super().__init__(f"--group-by got the same axis twice: {name.root}")
+
+
+class EmptyGroupByError(typer.BadParameter):
+    def __init__(self) -> None:
+        super().__init__("--group-by needs at least one axis")
 
 
 app = typer.Typer(no_args_is_help=True)
@@ -73,27 +82,36 @@ class Arguments(RootModel[dict[str, object]]):
     pass
 
 
+class AxisName(RootModel[str]):
+    pass
+
+
 class AxisNames(RootModel[tuple[str, ...]]):
-    def split(self) -> Arr[str]:
+    def split(self) -> Arr[AxisName]:
         return (
             Arr(self.root)
-            .map(lambda name: name.split(","))
+            .map(lambda spelling: spelling.split(","))
             .flatten()
             .map(str.strip)
             .filter(lambda name: name != "")
+            .map(AxisName)
         )
 
 
-def _axis(name: DisplayText) -> GroupAxis:
+def _axis(name: AxisName) -> GroupAxis:
     if name.root not in set(GroupAxis):
         raise UnknownGroupAxisError(name)
     return GroupAxis(name.root)
 
 
-def _axes(names: AxisNames | None) -> GroupAxes:
-    if names is None:
-        return GroupAxes((GroupAxis.RULE,))
-    return GroupAxes(tuple(names.split().map(lambda n: _axis(DisplayText(n)))))
+def _axes(names: AxisNames) -> GroupAxes:
+    axes = tuple(names.split().map(_axis))
+    if len(axes) == 0:
+        raise EmptyGroupByError
+    repeated = Arr(axes).filter(lambda axis: axes.count(axis) > 1).to_list()
+    if len(repeated) > 0:
+        raise RepeatedGroupAxisError(AxisName(repeated[0].value))
+    return GroupAxes(axes)
 
 
 class Overrides(RootModel[dict[str, object]]):
@@ -228,7 +246,11 @@ def check(  # noqa: PLR0913, PLR0917
         quiet=Verdict(root=quiet),
         output_format=output_format,
         statistics=Verdict(root=statistics),
-        group_by=_axes(AxisNames(tuple(group_by)) if group_by is not None else None),
+        group_by=(
+            GroupAxes.default()
+            if group_by is None
+            else _axes(AxisNames(tuple(group_by)))
+        ),
     )
 
     targets = tuple(paths) if paths is not None else (Path.cwd(),)

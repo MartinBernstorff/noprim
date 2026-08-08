@@ -2,7 +2,7 @@ from enum import StrEnum
 from typing import override
 
 from iterpy import Arr
-from pydantic import BaseModel, RootModel
+from pydantic import BaseModel, Field, RootModel
 
 from noprim_core.annotations import AnnotationText
 from noprim_core.baseline import BaselineOutcome
@@ -67,14 +67,16 @@ class GroupAxis(StrEnum):
 
 
 class GroupAxes(RootModel[tuple[GroupAxis, ...]]):
-    pass
+    @classmethod
+    def default(cls) -> "GroupAxes":
+        return cls((GroupAxis.RULE,))
 
 
 class RenderOptions(BaseModel):
     quiet: Verdict = Verdict(root=False)
     output_format: OutputFormat = OutputFormat.TEXT
     statistics: Verdict = Verdict(root=False)
-    group_by: GroupAxes = GroupAxes((GroupAxis.RULE,))
+    group_by: GroupAxes = Field(default_factory=GroupAxes.default)
 
 
 class Rendered(BaseModel):
@@ -138,15 +140,9 @@ class Diagnostic(BaseModel):
         )
 
 
-def _diagnostics(report: CheckReport) -> Arr[DisplayText]:
-    located: list[Diagnostic] = [
-        *(
-            Diagnostic(
-                filename=v.filename, line=v.line, column=v.column, text=_message(v)
-            )
-            for v in report.violations
-        ),
-        *(
+def _error_diagnostics(report: CheckReport) -> Arr[Diagnostic]:
+    return Arr(
+        [
             Diagnostic(
                 filename=e.filename,
                 line=e.line,
@@ -154,7 +150,19 @@ def _diagnostics(report: CheckReport) -> Arr[DisplayText]:
                 text=DisplayText(e.message.root),
             )
             for e in report.errors
+        ]
+    )
+
+
+def _diagnostics(report: CheckReport) -> Arr[DisplayText]:
+    located = [
+        *(
+            Diagnostic(
+                filename=v.filename, line=v.line, column=v.column, text=_message(v)
+            )
+            for v in report.violations
         ),
+        *_error_diagnostics(report),
     ]
     return Arr(sorted(located)).map(Diagnostic.rendered)
 
@@ -182,6 +190,13 @@ class JsonReport(BaseModel):
     errors: tuple[JsonError, ...]
 
 
+def _json_errors(report: CheckReport) -> tuple[JsonError, ...]:
+    return tuple(
+        JsonError(path=e.filename, line=e.line, column=e.column, message=e.message)
+        for e in report.errors
+    )
+
+
 def _json_report(report: CheckReport) -> JsonReport:
     return JsonReport(
         violations=tuple(
@@ -197,10 +212,7 @@ def _json_report(report: CheckReport) -> JsonReport:
             )
             for v in report.violations
         ),
-        errors=tuple(
-            JsonError(path=e.filename, line=e.line, column=e.column, message=e.message)
-            for e in report.errors
-        ),
+        errors=_json_errors(report),
     )
 
 
@@ -208,8 +220,8 @@ class Group(BaseModel):
     values: tuple[DisplayText, ...]
     count: Count
 
-    # Descending by count; ties break on the axis values so a run always prints
-    # the same order.
+    # Ties break on the axis values, so diffing two runs shows what changed rather
+    # than what the walk happened to reach first.
     def __lt__(self, other: "Group") -> bool:
         return (-self.count.root, tuple(v.root for v in self.values)) < (
             -other.count.root,
@@ -227,6 +239,9 @@ class JsonGroup(BaseModel):
 
 class JsonStatistics(BaseModel):
     statistics: tuple[JsonGroup, ...]
+    # A file that would not parse contributed no violations to any count, so the
+    # counts are only trustworthy alongside it.
+    errors: tuple[JsonError, ...]
 
 
 def _axis_value(violation: Violation, axis: GroupAxis) -> DisplayText:
@@ -335,10 +350,16 @@ def _statistics(report: CheckReport, options: RenderOptions) -> Arr[DisplayText]
             JsonStatistics(
                 statistics=tuple(
                     groups.map(lambda group: _json_group(group, options.group_by))
-                )
+                ),
+                errors=_json_errors(report),
             )
         )
-    return _statistics_lines(groups)
+    # A count cannot express a file that would not parse, so those keep their line.
+    return (
+        _error_diagnostics(report)
+        .map(Diagnostic.rendered)
+        .chain(_statistics_lines(groups))
+    )
 
 
 def _body(report: CheckReport, options: RenderOptions) -> Arr[DisplayText]:

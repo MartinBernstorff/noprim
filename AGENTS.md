@@ -19,14 +19,22 @@ know about the other.
 
 The exit code is computed from the report, never from what was printed — otherwise
 `--statistics` grouping away every violation, or a JSON document that is one non-empty
-line whatever it contains, would silently change it.
+line whatever it contains, would silently change it. For the same reason a file that
+would not parse keeps its own line under `--statistics`, and its own `errors` entry in
+the JSON: no count can express it, and its violations are missing from every count.
 
 `--group-by` names the axes `--statistics` counts along: `rule`, `type`, `name` or
 `path`, comma-separated and repeatable. `GroupAxis`' values *are* the JSON keys, so
 `_json_group` splats them and a new axis needs a `GroupAxis` member, a case in
 `_axis_value` and a field on `JsonGroup`. Groups sort descending by count and then by
 their axis values, because equal counts otherwise come out in walk order and a diff of
-two runs is noise. `--group-by` without `--statistics` is rejected rather than ignored.
+two runs is noise.
+
+`_axes` rejects rather than shrugs, three ways: an unknown axis, no axis at all
+(`--group-by ""`), and the same axis twice — the last because the axis names are JSON
+keys, so a repeat that text prints as two columns would silently collapse to one. And
+`--group-by` without `--statistics` is rejected rather than ignored. `GroupAxes.default()`
+is the one place the default axis lives; `RenderOptions` and `check` both reach for it.
 
 JSON goes through pydantic models (`JsonReport`, `JsonStatistics`) rather than
 `json.dumps` over dicts: every field is a `RootModel`, which serialises as its root, so
