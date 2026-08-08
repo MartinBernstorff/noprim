@@ -1,6 +1,11 @@
+import importlib
+import pkgutil
+from types import ModuleType
+
 import pytest
 from iterpy import Arr
 
+import noprim_core.rules
 from noprim_core.rules.code import RuleCode, Selection, Selector, Selectors
 from noprim_core.rules.registry import (
     RULES,
@@ -10,6 +15,37 @@ from noprim_core.rules.registry import (
     rule_for,
     selection,
 )
+from noprim_core.rules.rule import Rule
+
+
+def _rule_modules() -> Arr[ModuleType]:
+    return (
+        Arr(pkgutil.iter_modules(noprim_core.rules.__path__))
+        .filter(lambda found: not found.name.startswith("test_"))
+        .map(lambda found: importlib.import_module(f"noprim_core.rules.{found.name}"))
+    )
+
+
+def _rules_defined_in(module: ModuleType) -> Arr[type[Rule]]:
+    # `__mro__` rather than `issubclass`: `Rule` is not runtime_checkable.
+    return (
+        Arr(vars(module).values())
+        .filter(lambda value: isinstance(value, type))
+        .filter(lambda value: Rule in value.__mro__ and value is not Rule)
+        .filter(lambda value: value.__module__ == module.__name__)
+    )
+
+
+def test_every_rule_that_exists_is_registered() -> None:
+    assert (
+        _rule_modules().map(_rules_defined_in).flatten().to_set()
+        == Arr(RULES).map(type).to_set()
+    )
+
+
+def test_a_module_defines_at_most_one_rule() -> None:
+    crowded = _rule_modules().filter(lambda m: _rules_defined_in(m).len() > 1).to_list()
+    assert crowded == []
 
 
 def _every_code() -> Selection:
