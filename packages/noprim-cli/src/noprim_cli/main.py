@@ -4,10 +4,15 @@ from tomllib import TOMLDecodeError
 from typing import Annotated, NoReturn
 
 import typer
+from iterpy import Arr
 from pydantic import RootModel, ValidationError
 
 from noprim_cli.render import (
+    DisplayText,
     Duration,
+    GroupAxes,
+    GroupAxis,
+    OutputFormat,
     Rendered,
     RenderOptions,
     RunOutcome,
@@ -43,6 +48,19 @@ class WriteBaselineWithoutPathError(typer.BadParameter):
         super().__init__("--write-baseline needs --baseline to say which file to write")
 
 
+class GroupByWithoutStatisticsError(typer.BadParameter):
+    def __init__(self) -> None:
+        super().__init__("--group-by needs --statistics to have anything to group")
+
+
+class UnknownGroupAxisError(typer.BadParameter):
+    def __init__(self, name: DisplayText) -> None:
+        expected = ", ".join(axis.value for axis in GroupAxis)
+        super().__init__(
+            f"--group-by got an unknown axis: {name}; expected one of {expected}"
+        )
+
+
 app = typer.Typer(no_args_is_help=True)
 
 
@@ -53,6 +71,29 @@ def cli() -> None:
 
 class Arguments(RootModel[dict[str, object]]):
     pass
+
+
+class AxisNames(RootModel[tuple[str, ...]]):
+    def split(self) -> Arr[str]:
+        return (
+            Arr(self.root)
+            .map(lambda name: name.split(","))
+            .flatten()
+            .map(str.strip)
+            .filter(lambda name: name != "")
+        )
+
+
+def _axis(name: DisplayText) -> GroupAxis:
+    if name.root not in set(GroupAxis):
+        raise UnknownGroupAxisError(name)
+    return GroupAxis(name.root)
+
+
+def _axes(names: AxisNames | None) -> GroupAxes:
+    if names is None:
+        return GroupAxes((GroupAxis.RULE,))
+    return GroupAxes(tuple(names.split().map(lambda n: _axis(DisplayText(n)))))
 
 
 class Overrides(RootModel[dict[str, object]]):
@@ -160,11 +201,35 @@ def check(  # noqa: PLR0913, PLR0917
     quiet: Annotated[  # noprim: ignore
         bool, typer.Option("--quiet", "-q", help="Suppress the summary.")
     ] = False,
+    statistics: Annotated[  # noprim: ignore
+        bool,
+        typer.Option("--statistics", help="Print counts instead of one line each."),
+    ] = False,
+    group_by: Annotated[  # noprim: ignore
+        list[str] | None,
+        typer.Option(
+            "--group-by",
+            help="Axes to count --statistics along: rule, type, name or path."
+            " Comma-separated, repeatable.",
+        ),
+    ] = None,
+    output_format: Annotated[
+        OutputFormat,
+        typer.Option("--output-format", help="How to print what was found."),
+    ] = OutputFormat.TEXT,
 ) -> None:
     if refresh and baseline is None:
         raise WriteBaselineWithoutPathError
+    if group_by is not None and not statistics:
+        raise GroupByWithoutStatisticsError
     # Nothing is bound yet, so locals() is exactly the parameters above.
     settings = _settings(Arguments(locals()))
+    options = RenderOptions(
+        quiet=Verdict(root=quiet),
+        output_format=output_format,
+        statistics=Verdict(root=statistics),
+        group_by=_axes(AxisNames(tuple(group_by)) if group_by is not None else None),
+    )
 
     targets = tuple(paths) if paths is not None else (Path.cwd(),)
     missing = [path for path in targets if not path.exists()]
@@ -185,7 +250,6 @@ def check(  # noqa: PLR0913, PLR0917
     except (OSError, ValidationError) as error:
         _fail(error)
     elapsed = Duration(perf_counter() - started)
-    options = RenderOptions(quiet=Verdict(root=quiet))
 
     if baseline is None:
         _emit(render(RunOutcome(report=report), elapsed, options))

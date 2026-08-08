@@ -1,10 +1,15 @@
+import json
 from pathlib import Path
 
 import pytest
+from pydantic import RootModel
 
 from noprim_cli.render import (
     Count,
     Duration,
+    GroupAxes,
+    GroupAxis,
+    OutputFormat,
     Rendered,
     RenderOptions,
     RunOutcome,
@@ -96,6 +101,15 @@ def _rendered(outcome: RunOutcome, options: RenderOptions) -> Rendered:
 
 def _loud(outcome: RunOutcome) -> Rendered:
     return _rendered(outcome, RenderOptions())
+
+
+class JsonDocument(RootModel[dict[str, object]]):
+    pass
+
+
+def _as_json(outcome: RunOutcome, options: RenderOptions) -> JsonDocument:
+    rendered = _rendered(outcome, options)
+    return JsonDocument(json.loads("\n".join(line.root for line in rendered.stdout)))
 
 
 @pytest.mark.parametrize(
@@ -303,6 +317,225 @@ def test_a_written_baseline_records_violations_instead_of_printing_them() -> Non
 
     assert [line.root.split(":")[0] for line in rendered.stdout] == ["b.py"]
     assert rendered.exit_code.root == 1
+
+
+def _violation(
+    filename: Filename, code: RuleCode, qualname: Qualname, annotation: AnnotationText
+) -> Violation:
+    return Violation(
+        filename=filename,
+        code=code,
+        line=LineNumber(1),
+        column=ColumnNumber(1),
+        surface=Surface.PARAMETER,
+        qualname=qualname,
+        annotation=annotation,
+    )
+
+
+def _mixed() -> CheckReport:
+    return _report(
+        (
+            _violation(
+                Filename("a.py"),
+                RuleCode("NOPRIM001"),
+                Qualname("f.name"),
+                AnnotationText("str"),
+            ),
+            _violation(
+                Filename("a.py"),
+                RuleCode("NOPRIM001"),
+                Qualname("g.name"),
+                AnnotationText("str"),
+            ),
+            _violation(
+                Filename("b.py"),
+                RuleCode("NOPRIM001"),
+                Qualname("h.size"),
+                AnnotationText("int"),
+            ),
+            _violation(
+                Filename("b.py"),
+                RuleCode("NOPRIM002"),
+                Qualname("h"),
+                AnnotationText("int"),
+            ),
+        ),
+        (),
+        Count(2),
+    )
+
+
+def _statistics(axes: GroupAxes) -> RenderOptions:
+    return RenderOptions(statistics=Verdict(root=True), group_by=axes)
+
+
+def test_statistics_counts_by_rule_descending() -> None:
+    rendered = _rendered(
+        RunOutcome(report=_mixed()), _statistics(GroupAxes((GroupAxis.RULE,)))
+    )
+
+    assert [line.root for line in rendered.stdout] == [
+        "3  NOPRIM001",
+        "1  NOPRIM002",
+    ]
+
+
+def test_statistics_splits_on_every_requested_axis() -> None:
+    rendered = _rendered(
+        RunOutcome(report=_mixed()),
+        _statistics(GroupAxes((GroupAxis.RULE, GroupAxis.TYPE))),
+    )
+
+    assert [line.root for line in rendered.stdout] == [
+        "2  NOPRIM001  str",
+        "1  NOPRIM001  int",
+        "1  NOPRIM002  int",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("axis", "expected"),
+    [
+        (GroupAxis.PATH, ["2  a.py", "2  b.py"]),
+        (GroupAxis.NAME, ["2  name", "1  h", "1  size"]),
+        (GroupAxis.TYPE, ["2  int", "2  str"]),
+    ],
+)
+def test_statistics_groups_on_each_axis(axis: GroupAxis, expected: list[str]) -> None:
+    rendered = _rendered(RunOutcome(report=_mixed()), _statistics(GroupAxes((axis,))))
+
+    assert [line.root for line in rendered.stdout] == expected
+
+
+def test_statistics_aligns_counts_to_the_widest() -> None:
+    report = _report(
+        (
+            *(
+                _violation(
+                    Filename("a.py"),
+                    RuleCode("NOPRIM001"),
+                    Qualname(f"f{n}.a"),
+                    AnnotationText("str"),
+                )
+                for n in range(10)
+            ),
+            _violation(
+                Filename("a.py"),
+                RuleCode("NOPRIM002"),
+                Qualname("g"),
+                AnnotationText("int"),
+            ),
+        ),
+        (),
+        Count(1),
+    )
+
+    rendered = _rendered(
+        RunOutcome(report=report), _statistics(GroupAxes((GroupAxis.RULE,)))
+    )
+
+    assert [line.root for line in rendered.stdout] == [
+        "10  NOPRIM001",
+        " 1  NOPRIM002",
+    ]
+
+
+def test_statistics_of_a_clean_run_prints_nothing() -> None:
+    rendered = _rendered(
+        RunOutcome(report=_nothing()), _statistics(GroupAxes((GroupAxis.RULE,)))
+    )
+
+    assert rendered.stdout == ()
+
+
+def test_statistics_as_json_names_each_axis() -> None:
+    document = _as_json(
+        RunOutcome(report=_mixed()),
+        RenderOptions(
+            statistics=Verdict(root=True),
+            group_by=GroupAxes((GroupAxis.RULE, GroupAxis.PATH)),
+            output_format=OutputFormat.JSON,
+        ),
+    )
+
+    assert document.root == {
+        "statistics": [
+            {"count": 2, "rule": "NOPRIM001", "path": "a.py"},
+            {"count": 1, "rule": "NOPRIM001", "path": "b.py"},
+            {"count": 1, "rule": "NOPRIM002", "path": "b.py"},
+        ]
+    }
+
+
+def test_statistics_leaves_the_exit_code_alone() -> None:
+    assert (
+        _rendered(
+            RunOutcome(report=_one_violation()),
+            _statistics(GroupAxes((GroupAxis.RULE,))),
+        ).exit_code.root
+        == 1
+    )
+
+
+def _json_options() -> RenderOptions:
+    return RenderOptions(output_format=OutputFormat.JSON)
+
+
+def test_json_describes_every_violation() -> None:
+    violation = Violation(
+        filename=Filename("a.py"),
+        code=RuleCode("NOPRIM001"),
+        line=LineNumber(2),
+        column=ColumnNumber(7),
+        surface=Surface.PARAMETER,
+        qualname=Qualname("greet.user_id"),
+        annotation=AnnotationText("str"),
+    )
+
+    document = _as_json(
+        RunOutcome(report=_report((violation,), (), Count(1))), _json_options()
+    )
+
+    assert document.root["violations"] == [
+        {
+            "path": "a.py",
+            "line": 2,
+            "column": 7,
+            "code": "NOPRIM001",
+            "surface": "parameter",
+            "name": "user_id",
+            "qualname": "greet.user_id",
+            "annotation": "str",
+        }
+    ]
+
+
+def test_json_is_parseable_with_nothing_to_report() -> None:
+    document = _as_json(RunOutcome(report=_nothing()), _json_options())
+
+    assert document.root == {"violations": [], "errors": []}
+
+
+def test_json_keeps_file_errors_out_of_the_violations() -> None:
+    report = _report((), (_error(Filename("b.py"), LineNumber(3)),), Count(1))
+
+    document = _as_json(RunOutcome(report=report), _json_options())
+
+    assert document.root["errors"] == [
+        {
+            "path": "b.py",
+            "line": 3,
+            "column": 1,
+            "message": "syntax error: invalid syntax",
+        }
+    ]
+
+
+def test_json_still_summarises_on_stderr() -> None:
+    rendered = _rendered(RunOutcome(report=_one_violation()), _json_options())
+
+    assert rendered.stderr[0].root.endswith("found 1 violation")
 
 
 @pytest.mark.parametrize(

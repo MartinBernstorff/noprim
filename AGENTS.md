@@ -10,6 +10,28 @@ CLI that lints Python for primitive-typed function parameters.
 
 `noprim_cli.render` is the whole of the formatting: `render(outcome, elapsed, options)` turns a run into a `Rendered` — `stdout`, `stderr`, `exit_code` — and `main._emit` is the only thing that echoes or exits. Wording, pluralisation, sort order and exit codes are therefore tested in `test_render.py` against a returned value; `test_main.py` only checks that flags reach the right place.
 
+## Reporting
+
+`RenderOptions` carries two independent axes, and `render` crosses them: **what** to
+print (`--statistics` counts instead of one line per violation) and **how**
+(`--output-format json`). All four combinations are reachable, so neither flag has to
+know about the other.
+
+The exit code is computed from the report, never from what was printed — otherwise
+`--statistics` grouping away every violation, or a JSON document that is one non-empty
+line whatever it contains, would silently change it.
+
+`--group-by` names the axes `--statistics` counts along: `rule`, `type`, `name` or
+`path`, comma-separated and repeatable. `GroupAxis`' values *are* the JSON keys, so
+`_json_group` splats them and a new axis needs a `GroupAxis` member, a case in
+`_axis_value` and a field on `JsonGroup`. Groups sort descending by count and then by
+their axis values, because equal counts otherwise come out in walk order and a diff of
+two runs is noise. `--group-by` without `--statistics` is rejected rather than ignored.
+
+JSON goes through pydantic models (`JsonReport`, `JsonStatistics`) rather than
+`json.dumps` over dicts: every field is a `RootModel`, which serialises as its root, so
+the shape is declared in one place and dogfoods the deny-list.
+
 Dependencies point one way: `noprim-core` <- `noprim-io` <- `noprim-cli`. Enforced by `tach` (`moon run :modularity`).
 
 Three modules, **one distribution**. The root `pyproject.toml` is the only publishable package (`noprim`); it owns the `noprim` script and vendors all three module dirs into a single wheel. It uses hatchling rather than `uv_build` because `uv_build`'s `module-root` is one directory and cannot reach across `packages/*`.

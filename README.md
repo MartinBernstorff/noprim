@@ -122,9 +122,54 @@ function's name, not one of its own, so it is never skipped this way.
 | `--ignore-names NAME` | Skip parameters and attributes called `NAME`. Repeatable. |
 | `--exclude GLOB` | Skip paths while walking. Gitignore syntax, anchored at the config file's directory, or the repo root when there is no config. Repeatable. |
 | `--quiet`, `-q` | Suppress the trailing summary. |
+| `--statistics` | Print counts instead of one line per violation. |
+| `--group-by AXIS` | Axes `--statistics` counts along: `rule`, `type`, `name`, `path`. Comma-separated, repeatable. Defaults to `rule`. |
+| `--output-format text\|json` | How to print what was found. Defaults to `text`. |
 
 Directories are walked recursively, honouring every `.gitignore` from the repo root
 down. A file named explicitly on the command line is checked even if it is ignored.
+
+## Triage
+
+`--statistics` answers "where is the debt?" without a throwaway script over the text
+output:
+
+```console
+$ noprim check --statistics --group-by rule,type --quiet .
+312  NOPRIM002  str
+187  NOPRIM001  str
+ 44  NOPRIM001  int
+```
+
+`--group-by name` is the one that usually pays: it counts the leaf name — the parameter
+or attribute, or the function for a return type — so the handful of `id`, `path` and
+`name` annotations that account for most of the list surface immediately.
+
+`--output-format json` emits the whole list machine-readably, and stays valid when
+there is nothing to report:
+
+```console
+$ noprim check --output-format json --quiet .
+{
+  "violations": [
+    {
+      "path": "app/users.py",
+      "line": 12,
+      "column": 20,
+      "code": "NOPRIM001",
+      "surface": "parameter",
+      "name": "user_id",
+      "qualname": "greet.user_id",
+      "annotation": "str"
+    }
+  ],
+  "errors": []
+}
+```
+
+The two compose: `--statistics --output-format json` emits a `statistics` array whose
+entries carry a `count` and one key per requested axis. Neither flag changes the exit
+code — 1 when anything was found, 0 otherwise.
 
 ## Configuration
 

@@ -678,10 +678,120 @@ def test_an_unknown_config_key_exits_two(
     assert "denied" in _plain(DisplayText(result.output)).root
 
 
+def test_json_output_lists_every_violation(tmp_path: Path) -> None:
+    target = tmp_path / "bad.py"
+    _ = target.write_text("def greet(user_id: str) -> None: ...\n")
+
+    result = runner.invoke(
+        app, ["check", "--output-format", "json", "--quiet", str(target)]
+    )
+
+    assert result.exit_code == 1
+    assert json.loads(result.stdout)["violations"] == [
+        {
+            "path": str(target),
+            "line": 1,
+            "column": 20,
+            "code": "NOPRIM001",
+            "surface": "parameter",
+            "name": "user_id",
+            "qualname": "greet.user_id",
+            "annotation": "str",
+        }
+    ]
+
+
+def test_json_output_parses_when_there_is_nothing_to_report(tmp_path: Path) -> None:
+    _ = (tmp_path / "good.py").write_text("def f(a: Name) -> None: ...\n")
+
+    result = runner.invoke(
+        app, ["check", "--output-format", "json", "--quiet", str(tmp_path)]
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {"violations": [], "errors": []}
+
+
+def test_statistics_counts_instead_of_listing(tmp_path: Path) -> None:
+    _ = (tmp_path / "bad.py").write_text(
+        "def f(a: int, b: int) -> str: ...\ndef g(c: str) -> None: ...\n"
+    )
+
+    result = runner.invoke(app, ["check", "--statistics", "--quiet", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert result.stdout.splitlines() == ["3  NOPRIM001", "1  NOPRIM002"]
+
+
+def test_group_by_takes_a_comma_separated_list(tmp_path: Path) -> None:
+    _ = (tmp_path / "bad.py").write_text("def f(a: int, b: str) -> None: ...\n")
+
+    result = runner.invoke(
+        app,
+        ["check", "--statistics", "--group-by", "rule,type", "--quiet", str(tmp_path)],
+    )
+
+    assert result.stdout.splitlines() == ["1  NOPRIM001  int", "1  NOPRIM001  str"]
+
+
+def test_an_unknown_group_by_axis_exits_two(tmp_path: Path) -> None:
+    _ = (tmp_path / "good.py").write_text("def f() -> None: ...\n")
+
+    result = runner.invoke(
+        app, ["check", "--statistics", "--group-by", "module", str(tmp_path)]
+    )
+
+    assert result.exit_code == 2
+    assert (
+        "--group-by got an unknown axis: module; expected one of rule, type, name, path"
+        in _plain(DisplayText(result.output)).root
+    )
+
+
+def test_group_by_without_statistics_is_rejected(tmp_path: Path) -> None:
+    _ = (tmp_path / "good.py").write_text("def f() -> None: ...\n")
+
+    result = runner.invoke(app, ["check", "--group-by", "rule", str(tmp_path)])
+
+    assert result.exit_code == 2
+    assert "--group-by needs --statistics" in _plain(DisplayText(result.output)).root
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        [],
+        ["--statistics"],
+        ["--output-format", "json"],
+        ["--statistics", "--output-format", "json"],
+    ],
+)
+def test_reporting_flags_leave_the_exit_code_alone(
+    tmp_path: Path, flags: list[str]
+) -> None:
+    _ = (tmp_path / "bad.py").write_text("def f(a: int) -> None: ...\n")
+    _ = (tmp_path / "clean").mkdir()
+    _ = (tmp_path / "clean" / "good.py").write_text("def g() -> None: ...\n")
+
+    dirty = runner.invoke(app, ["check", *flags, str(tmp_path / "bad.py")])
+    clean = runner.invoke(app, ["check", *flags, str(tmp_path / "clean")])
+
+    assert dirty.exit_code == 1
+    assert clean.exit_code == 0
+
+
 def test_every_flag_that_is_not_run_mode_names_a_config_key() -> None:
     # The name is the wiring: a flag matching no key is silently dropped rather
     # than rejected. Run-mode flags steer one invocation and are meant to miss.
-    run_mode = {"paths", "quiet", "baseline", "refresh"}
+    run_mode = {
+        "paths",
+        "quiet",
+        "baseline",
+        "refresh",
+        "statistics",
+        "group_by",
+        "output_format",
+    }
     flags = set(inspect.signature(check).parameters) - run_mode
     assert flags <= set(Settings.model_fields)
 
