@@ -17,7 +17,7 @@ surface — so a codebase drowning in return types can silence `NOPRIM002` witho
 allowing `int` everywhere.
 
 ```
-!uv run python ../docs-support/scripts/rules_table.py
+!uv run python ../docs-support/scripts/tables.py rules
 ```
 
 `--preset` chooses which set to start from — `default` for the rules marked on above,
@@ -32,17 +32,12 @@ $ noprim check --preset all .                # every rule there is
 $ noprim check --preset all --ignore NOPRIM007 .   # every rule but predicates
 ```
 
-An annotation can break two rules at once — `dict[str, Any]` is a primitive and a top
-type — and reports once per rule, so the codes tell you which half to fix.
+The deny-list covers the builtins, the stdlib value types and the containers — each
+with what to reach for instead. Adjust it per run with `--allow` and `--deny`.
 
-A denied type counts wherever it appears inside the annotation — `list[str]`,
-`dict[str, UserId]` and `str | None` all count.
-
-The deny-list covers the builtins (`int`, `str`, `float`, `bool`, `bytes`,
-`bytearray`, `complex`), the stdlib value types (`Path`, `PurePath`, `UUID`,
-`datetime`, `date`, `time`, `timedelta`, `Decimal`, `Fraction`) and the containers
-(`list`, `dict`, `set`, `frozenset`, `tuple`). Adjust it per run with `--allow` and
-`--deny`.
+```
+!uv run python ../docs-support/scripts/tables.py denied
+```
 
 `Any` and `object` are not on it. They are top types, not primitives: they say the
 type is unknown rather than too narrow, and `object` is the right annotation for
@@ -51,9 +46,6 @@ type is unknown rather than too narrow, and `object` is the right annotation for
 `--allow Any` is an error; `--deny Any` still works if you want one of them on the
 deny-list by itself, reported as an ordinary primitive.
 
-A container matches only when it is bare: `list` is reported, `list[Name]` is not,
-because the annotation names a collection of a type that is already meaningful. It is
-the contents that are judged, so `list[str]` is reported for the `str`.
 
 ## What is exempt
 
@@ -90,9 +82,7 @@ def check(
 
 The comment suppresses only the line it sits on, and must end the line. Name codes in
 brackets to suppress just those — `# noprim: ignore[NOPRIM002]`, or
-`# noprim: ignore[NOPRIM001, NOPRIM002]` — and leave the brackets off to suppress
-every rule on the line. A code that no rule answers to suppresses nothing, so check
-the spelling.
+`# noprim: ignore[NOPRIM001, NOPRIM002]`.
 
 A whole module can opt out with `# noprim: ignore-file` in its leading comment block —
 before the first statement, so it reads as a statement about the file rather than about
@@ -185,17 +175,8 @@ walks up from the working directory to the repo root and uses the first one it f
 `noprim.toml` wins over a `pyproject.toml` beside it. A `pyproject.toml` without the
 table is not a config file, so it does not stop the search.
 
-```toml
-allow = ["str"]
-deny = ["Enum"]
-exclude = ["generated/**"]
-ignore-names = ["kwargs", "size"]
-ignore-param-names = ["value", "*_contains"]
-ignore-attribute-names = ["_*"]
-ignore-inner-classes = ["Meta"]
-preset = "all"
-extend-select = ["NOPRIM004"]
-ignore = ["NOPRIM002"]
+```
+!../docs-support/scripts/config_example.sh ../docs-support/fixtures/config
 ```
 
 Every key is a flag of the same name, and passing that flag replaces the key outright
@@ -207,17 +188,8 @@ One deny-list for a whole codebase is the wrong shape: the domain deserves stric
 rules than the Django layer. `per-path` entries adjust both the deny-list and the rules
 that run for the paths they match.
 
-```toml
-[[per-path]]
-paths = ["domain/**", "api/**"]
-deny = ["Enum", "Flag"]
-
-[[per-path]]
-paths = ["test_infra/**", "django_app/**"]
-allow = ["str", "int", "bool"]
-ignore = ["NOPRIM002"]
-ignore-param-names = ["name", "value"]
-ignore-inner-classes = ["Meta"]
+```
+!../docs-support/scripts/config_example.sh ../docs-support/fixtures/per-path
 ```
 
 An override's name patterns are appended to the top level's, and gitignore's

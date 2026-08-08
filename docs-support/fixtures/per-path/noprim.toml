@@ -1,0 +1,10 @@
+[[per-path]]
+paths = ["domain/**", "api/**"]
+deny = ["Enum", "Flag"]
+
+[[per-path]]
+paths = ["test_infra/**", "django_app/**"]
+allow = ["str", "int", "bool"]
+ignore = ["NOPRIM002"]
+ignore-param-names = ["name", "value"]
+ignore-inner-classes = ["Meta"]
