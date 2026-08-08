@@ -7,12 +7,12 @@ import typer
 from pydantic import BaseModel, ValidationError
 
 from noprim_cli.render import (
-    Count,
     Duration,
     Rendered,
     RenderOptions,
     RunOutcome,
-    WrittenBaseline,
+    baseline_applied,
+    baseline_written,
     render,
 )
 from noprim_core.baseline import Baseline, BaselineOutcome, apply_baseline
@@ -184,28 +184,9 @@ def check(  # noqa: PLR0913, PLR0917
             write_baseline(path, outcome.regenerated)
         except OSError as error:
             _fail(error)
-        _emit(render(_wrote(report, outcome, path), elapsed, options))
+        _emit(render(baseline_written(report, outcome, path), elapsed, options))
 
-    _emit(render(_suppressed(report, outcome), elapsed, options))
-
-
-def _wrote(
-    report: CheckReport, outcome: BaselineOutcome, path: BaselinePath
-) -> RunOutcome:
-    return RunOutcome(
-        report=report,
-        written=WrittenBaseline(
-            path=path, written=Count(len(outcome.regenerated.root))
-        ),
-    )
-
-
-def _suppressed(report: CheckReport, outcome: BaselineOutcome) -> RunOutcome:
-    return RunOutcome(
-        report=report.model_copy(update={"violations": outcome.reported}),
-        suppressed=Count(len(outcome.suppressed)),
-        stale=Count(len(outcome.stale)),
-    )
+    _emit(render(baseline_applied(report, outcome), elapsed, options))
 
 
 def _emit(rendered: Rendered) -> NoReturn:

@@ -3,6 +3,7 @@ from typing import override
 from iterpy import Arr
 from pydantic import BaseModel, RootModel
 
+from noprim_core.baseline import BaselineOutcome
 from noprim_core.checker import (
     ColumnNumber,
     Filename,
@@ -163,33 +164,53 @@ def _summary_line(
     )
 
 
-def _summary(outcome: RunOutcome, report: CheckReport) -> DisplayText:
+def _summary(outcome: RunOutcome) -> DisplayText:
     if outcome.written is None:
-        return _found(report, outcome.suppressed)
+        return _found(outcome.report, outcome.suppressed)
     written = _plural(outcome.written.written, Noun("violation"))
     return DisplayText(f"wrote {written} to {outcome.written.path.root}")
 
 
 def _notices(
-    outcome: RunOutcome, report: CheckReport, elapsed: Duration, options: RenderOptions
+    outcome: RunOutcome, elapsed: Duration, options: RenderOptions
 ) -> Arr[DisplayText]:
     if options.quiet.root:
         return Arr([])
     stale = [_stale_note(outcome.stale)] if outcome.stale.root > 0 else []
-    return Arr([*stale, _summary_line(report, elapsed, _summary(outcome, report))])
+    return Arr([*stale, _summary_line(outcome.report, elapsed, _summary(outcome))])
+
+
+def _reportable(outcome: RunOutcome) -> CheckReport:
+    # Writing a baseline records the violations rather than reporting them, so only
+    # the errors remain worth printing.
+    if outcome.written is None:
+        return outcome.report
+    return outcome.report.model_copy(update={"violations": ()})
 
 
 def render(outcome: RunOutcome, elapsed: Duration, options: RenderOptions) -> Rendered:
-    # Writing a baseline records the violations rather than reporting them, so only
-    # the errors remain worth printing.
-    report = (
-        outcome.report
-        if outcome.written is None
-        else outcome.report.model_copy(update={"violations": ()})
-    )
-    diagnostics = _diagnostics(report).to_list()
+    diagnostics = _diagnostics(_reportable(outcome)).to_list()
     return Rendered(
         stdout=tuple(diagnostics),
-        stderr=tuple(_notices(outcome, report, elapsed, options)),
+        stderr=tuple(_notices(outcome, elapsed, options)),
         exit_code=ExitCode(1 if len(diagnostics) > 0 else 0),
+    )
+
+
+def baseline_written(
+    report: CheckReport, outcome: BaselineOutcome, path: BaselinePath
+) -> RunOutcome:
+    return RunOutcome(
+        report=report,
+        written=WrittenBaseline(
+            path=path, written=Count(len(outcome.regenerated.root))
+        ),
+    )
+
+
+def baseline_applied(report: CheckReport, outcome: BaselineOutcome) -> RunOutcome:
+    return RunOutcome(
+        report=report.model_copy(update={"violations": outcome.reported}),
+        suppressed=Count(len(outcome.suppressed)),
+        stale=Count(len(outcome.stale)),
     )

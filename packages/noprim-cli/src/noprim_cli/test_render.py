@@ -59,6 +59,20 @@ def _report(
     )
 
 
+def _nothing() -> CheckReport:
+    return _report((), (), Count(1))
+
+
+def _one_violation() -> CheckReport:
+    return _report(
+        (_at(Filename("a.py"), LineNumber(1), ColumnNumber(1)),), (), Count(1)
+    )
+
+
+def _wrote(count: Count) -> WrittenBaseline:
+    return WrittenBaseline(path=BaselinePath(Path(".noprim.json")), written=count)
+
+
 def _rendered(outcome: RunOutcome, options: RenderOptions) -> Rendered:
     return render(outcome, Duration(0.5), options)
 
@@ -142,17 +156,8 @@ def test_interleaves_file_errors_with_violations() -> None:
 @pytest.mark.parametrize(
     ("outcome", "expected"),
     [
-        (RunOutcome(report=_report((), (), Count(1))), "no violations"),
-        (
-            RunOutcome(
-                report=_report(
-                    (_at(Filename("a.py"), LineNumber(1), ColumnNumber(1)),),
-                    (),
-                    Count(1),
-                )
-            ),
-            "found 1 violation",
-        ),
+        (RunOutcome(report=_nothing()), "no violations"),
+        (RunOutcome(report=_one_violation()), "found 1 violation"),
         (
             RunOutcome(
                 report=_report(
@@ -192,12 +197,8 @@ def test_counts_the_files_it_checked() -> None:
 
 
 def test_quiet_hides_the_notices_but_not_the_diagnostics() -> None:
-    report = _report(
-        (_at(Filename("a.py"), LineNumber(1), ColumnNumber(1)),), (), Count(1)
-    )
-
     rendered = _rendered(
-        RunOutcome(report=report, stale=Count(1)),
+        RunOutcome(report=_one_violation(), stale=Count(1)),
         RenderOptions(quiet=Verdict(root=True)),
     )
 
@@ -215,7 +216,7 @@ def test_quiet_hides_the_notices_but_not_the_diagnostics() -> None:
 def test_notes_stale_baseline_entries_before_the_summary(
     count: int, expected: str
 ) -> None:
-    rendered = _loud(RunOutcome(report=_report((), (), Count(1)), stale=Count(count)))
+    rendered = _loud(RunOutcome(report=_nothing(), stale=Count(count)))
 
     assert rendered.stderr[0].root == (
         f"{expected}; rerun with --write-baseline to prune"
@@ -229,14 +230,7 @@ def test_notes_stale_baseline_entries_before_the_summary(
 def test_a_written_baseline_reports_what_it_recorded(
     written: int, expected: str
 ) -> None:
-    outcome = RunOutcome(
-        report=_report(
-            (_at(Filename("a.py"), LineNumber(1), ColumnNumber(1)),), (), Count(1)
-        ),
-        written=WrittenBaseline(
-            path=BaselinePath(Path(".noprim.json")), written=Count(written)
-        ),
-    )
+    outcome = RunOutcome(report=_one_violation(), written=_wrote(Count(written)))
 
     rendered = _loud(outcome)
 
@@ -252,9 +246,7 @@ def test_a_written_baseline_records_violations_instead_of_printing_them() -> Non
             (_error(Filename("b.py"), LineNumber(1)),),
             Count(2),
         ),
-        written=WrittenBaseline(
-            path=BaselinePath(Path(".noprim.json")), written=Count(1)
-        ),
+        written=_wrote(Count(1)),
     )
 
     rendered = _loud(outcome)
@@ -266,36 +258,15 @@ def test_a_written_baseline_records_violations_instead_of_printing_them() -> Non
 @pytest.mark.parametrize(
     ("outcome", "expected"),
     [
-        (RunOutcome(report=_report((), (), Count(1))), 0),
-        (
-            RunOutcome(
-                report=_report(
-                    (_at(Filename("a.py"), LineNumber(1), ColumnNumber(1)),),
-                    (),
-                    Count(1),
-                )
-            ),
-            1,
-        ),
+        (RunOutcome(report=_nothing()), 0),
+        (RunOutcome(report=_one_violation()), 1),
         (
             RunOutcome(
                 report=_report((), (_error(Filename("a.py"), LineNumber(1)),), Count(1))
             ),
             1,
         ),
-        (
-            RunOutcome(
-                report=_report(
-                    (_at(Filename("a.py"), LineNumber(1), ColumnNumber(1)),),
-                    (),
-                    Count(1),
-                ),
-                written=WrittenBaseline(
-                    path=BaselinePath(Path(".noprim.json")), written=Count(1)
-                ),
-            ),
-            0,
-        ),
+        (RunOutcome(report=_one_violation(), written=_wrote(Count(1))), 0),
     ],
 )
 def test_exit_code_follows_the_diagnostics(outcome: RunOutcome, expected: int) -> None:
