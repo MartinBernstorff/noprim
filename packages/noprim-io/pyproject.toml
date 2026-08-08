@@ -2,7 +2,7 @@
 [project]
 name = "noprim-io"
 version = "0.0.0"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2",
     "iterpy>=1.15",

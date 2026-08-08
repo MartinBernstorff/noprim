@@ -54,7 +54,11 @@ tasks:
       test -f "$wheel" || { echo "smoke: expected exactly one wheel"; exit 1; }
       printf 'def clean() -> None:\n    return None\n' > "$tmp/clean.py"
       printf 'def dirty(value: str) -> None:\n    return None\n' > "$tmp/dirty.py"
-      uv venv "$tmp/venv"
+      # The floor, not the dev interpreter: a 3.12-only spelling would otherwise
+      # only surface for a user, never here.
+      floor="$(sed -n 's/^requires-python = ">=\(.*\)"$/\1/p' pyproject.toml)"
+      test -n "$floor" || { echo "smoke: cannot read requires-python"; exit 1; }
+      uv venv --python "$floor" "$tmp/venv"
       uv pip install --python "$tmp/venv" "$wheel"
       # An absolute path, because `uvx` and `uv run --with` both fall back to
       # PATH and would silently run the dev venv's noprim instead of the wheel's.
