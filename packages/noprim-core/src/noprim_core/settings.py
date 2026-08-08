@@ -9,8 +9,8 @@ from noprim_core.checker import (
     DeniedTypes,
     IgnoredNames,
     TopTypes,
-    Verdict,
 )
+from noprim_core.verdict import Verdict
 
 
 class AllowedNames(RootModel[tuple[str, ...]]):

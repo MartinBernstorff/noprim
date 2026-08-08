@@ -1,7 +1,8 @@
 from iterpy import Arr
 from pydantic import BaseModel, RootModel
 
-from noprim_core.checker import AnnotationText, Filename, Qualname, Surface, Violation
+from noprim_core.annotations import AnnotationText
+from noprim_core.checker import Filename, Qualname, Surface, Violation
 
 
 class BaselineKey(BaseModel, frozen=True):

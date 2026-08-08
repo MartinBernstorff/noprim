@@ -1,3 +1,4 @@
+from noprim_core.annotations import AnnotationText
 from noprim_core.baseline import (
     Baseline,
     BaselineKey,
@@ -7,7 +8,6 @@ from noprim_core.baseline import (
     apply_baseline,
 )
 from noprim_core.checker import (
-    AnnotationText,
     ColumnNumber,
     Filename,
     LineNumber,
