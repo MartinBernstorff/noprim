@@ -221,14 +221,16 @@ Always run tasks through moon, never the tool directly: `moon run :test`, not `p
 | `moon run root:smoke` | builds the wheel, installs it into a clean venv, runs it |
 | `moon run :noprim` | noprim against this repo's own source |
 | `moon run root:docs` | renders `docs-templates/` over `README.md` and `AGENTS.md` |
-| `moon run root:docs-check` | renders to a temp dir and fails on a diff |
+| `moon run root:docs-check` | the same render, writing nothing, failing on any difference |
 
 ## Docs
 
 `README.md` and `AGENTS.md` are **generated**. Edit `docs-templates/`; the pre-commit
-hook renders and stages the result, and `root:docs-check` fails CI when the two
-disagree. Both carry a banner saying so, and documator refuses to overwrite a file it
-did not write — so a hand-edit is lost at the next render rather than silently kept.
+hook renders and stages the result, and `root:docs-check` — `documator render --check`,
+which runs every block but writes nothing — fails CI on a document that is stale,
+missing, or orphaned by a template someone deleted. Both carry a banner saying so, and
+documator refuses to overwrite a file it did not write, so a hand-edit is lost at the
+next render rather than silently kept.
 
 A backtick span opening with `!` is a shell command, and its output is substituted:
 single-line output becomes an inline code span, multi-line output becomes a fenced
@@ -254,7 +256,8 @@ example claims, and pins the elapsed time — the only part of a run that is not
 about behaviour.
 
 documator is not a dev dependency: it requires Python 3.14 and this package supports
-3.13. It runs through `uvx` pinned to a revision, which is bumped by hand in `moon.yml`.
+3.13. It runs through `uvx`, pinned to a revision by the `DOCUMATOR` env in `moon.yml`
+— one line, so both tasks move together when it is bumped.
 
 ## Tooling
 

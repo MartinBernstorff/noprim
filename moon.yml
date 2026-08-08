@@ -19,6 +19,12 @@ fileGroups:
     - 'docs-templates/**/*'
     - 'docs-support/**/*'
 
+# documator requires Python 3.14 and this package supports 3.13, so it cannot be a dev
+# dependency. Pinned to a rev because an unpinned default branch would let a change over
+# there break a build over here with no commit to point at; bumping it is this one line.
+env:
+  DOCUMATOR: 'git+https://github.com/MartinBernstorff/documator@5ff3ee094493af8fe6c2b5bfe0431a13b88a1f9e'
+
 tasks:
   # Boundaries span packages, so this cannot live in a single package.
   modularity:
@@ -127,11 +133,8 @@ tasks:
       - 'moon.yml'
       - 'pytest.toml'
 
-  # documator requires Python 3.14 and this package supports 3.13, so it cannot be a
-  # dev dependency; pinned to a rev because an unpinned default branch would let a
-  # change over there break a build over here with no commit to point at.
   docs:
-    script: 'uvx --from git+https://github.com/MartinBernstorff/documator@36ed6e3ec92bd7d85f51457755b6f78884e03cc0 documator --quiet render docs-templates .'
+    script: 'uvx --from "$DOCUMATOR" documator --quiet render docs-templates .'
     inputs:
       - '@group(templates)'
       - '@group(sources)'
@@ -144,23 +147,10 @@ tasks:
     options:
       runInCI: false
 
+  # Reports a document that is stale, missing, or orphaned by a deleted template, and
+  # writes none of them.
   docs-check:
-    script: |
-      set -euo pipefail
-      tmp="$(mktemp -d)"
-      trap 'rm -rf "$tmp"' EXIT
-      uvx --from git+https://github.com/MartinBernstorff/documator@36ed6e3ec92bd7d85f51457755b6f78884e03cc0 \
-        documator --quiet render docs-templates "$tmp"
-      stale=0
-      # Every rendered document, at whatever depth: a template added under a
-      # subdirectory must be checked too, not silently skipped.
-      while IFS= read -r rendered; do
-        diff -u "${rendered#"$tmp"/}" "$rendered" || stale=1
-      done < <(find "$tmp" -type f -name '*.md')
-      test "$stale" -eq 0 || {
-        echo "docs are stale; run: moon run root:docs"
-        exit 1
-      }
+    script: 'uvx --from "$DOCUMATOR" documator --quiet render --check docs-templates .'
     inputs:
       - '@group(templates)'
       - '@group(sources)'
