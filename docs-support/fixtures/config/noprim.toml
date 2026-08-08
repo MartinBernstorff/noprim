@@ -1,0 +1,11 @@
+allow = ["str"]
+deny = ["Enum"]
+exclude = ["generated/**"]
+ignore-names = ["kwargs", "size"]
+ignore-param-names = ["value", "*_contains"]
+ignore-attribute-names = ["_*"]
+ignore-inner-classes = ["Meta"]
+exempt-typer-args = true
+preset = "core"
+extend-select = ["NOPRIM004"]
+ignore = ["NOPRIM002"]

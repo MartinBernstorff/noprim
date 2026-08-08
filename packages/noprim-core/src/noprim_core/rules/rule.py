@@ -1,6 +1,6 @@
 from typing import Protocol
 
-from pydantic import RootModel
+from pydantic import ConfigDict, RootModel
 
 from noprim_core.config import CheckConfig
 from noprim_core.rules.code import RuleCode
@@ -13,10 +13,27 @@ class RuleMessage(RootModel[str]):
     pass
 
 
+class RuleName(RootModel[str]):
+    # A rule's identity alongside its code, so it is compared and hashed like one.
+    model_config = ConfigDict(frozen=True)
+
+
+# A signature that the rule flags. Lives on the rule because that is where it stays
+# true; the README's table is rendered from it.
+class RuleExample(RootModel[str]):
+    pass
+
+
 class Rule(Protocol):
     # Properties, not declarations: an unset declared attribute typechecks clean.
     @property
     def code(self) -> RuleCode: ...
+
+    @property
+    def name(self) -> RuleName: ...
+
+    @property
+    def example(self) -> RuleExample: ...
 
     @property
     def in_core(self) -> Verdict: ...

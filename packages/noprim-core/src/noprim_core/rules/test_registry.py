@@ -61,6 +61,17 @@ def test_every_code_is_unique() -> None:
     assert len(_every_code().root) == len(RULES)
 
 
+def test_every_name_is_unique() -> None:
+    assert len(Arr(RULES).map(lambda rule: rule.name).to_set()) == len(RULES)
+
+
+@pytest.mark.parametrize("rule", RULES, ids=lambda rule: rule.code.root)
+def test_every_rule_describes_itself(rule: Rule) -> None:
+    assert rule.name.root.strip() != ""
+    # One line, because the rendered table gives it one row.
+    assert rule.example.root.strip().splitlines() == [rule.example.root]
+
+
 def test_the_core_preset_is_the_primitive_rules() -> None:
     assert core_selection() == Selection(
         frozenset({RuleCode("NOPRIM001"), RuleCode("NOPRIM002"), RuleCode("NOPRIM003")})

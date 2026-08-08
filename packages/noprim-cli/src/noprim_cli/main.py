@@ -203,7 +203,12 @@ def check(  # noqa: PLR0913, PLR0917
     ] = None,
     exclude: Annotated[  # noprim: ignore
         list[str] | None,
-        typer.Option("--exclude", help="Glob to skip while walking. Repeatable."),
+        typer.Option(
+            "--exclude",
+            help="Glob to skip while walking. Gitignore syntax, anchored at the "
+            "config file's directory, or the repo root when there is none. "
+            "Repeatable.",
+        ),
     ] = None,
     preset: Annotated[
         Preset | None,

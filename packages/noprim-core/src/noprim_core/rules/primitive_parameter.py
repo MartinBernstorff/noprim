@@ -3,7 +3,7 @@ from typing import override
 from noprim_core.annotations import SymbolName, names_in_text
 from noprim_core.config import CheckConfig
 from noprim_core.rules.code import RuleCode
-from noprim_core.rules.rule import Rule, RuleMessage
+from noprim_core.rules.rule import Rule, RuleExample, RuleMessage, RuleName
 from noprim_core.site import Owner, Site, Surface
 from noprim_core.violation import Violation
 from noprim_types.verdict import Verdict
@@ -19,6 +19,8 @@ def _has_an_alternative(violation: Violation) -> Verdict:
 
 class PrimitiveParameter(Rule):
     code = RuleCode("NOPRIM001")
+    name = RuleName("primitive-parameter")
+    example = RuleExample("def send(to: str) -> None")
     in_core = Verdict(root=True)
 
     @override
