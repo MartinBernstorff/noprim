@@ -11,6 +11,7 @@ from noprim_core.config import (
     TopTypes,
 )
 from noprim_core.rules.code import Selection, Selectors
+from noprim_core.rules.preset import Preset
 from noprim_core.rules.registry import selection, validate_selectors
 from noprim_core.verdict import Verdict
 
@@ -153,6 +154,7 @@ class Settings(BaseModel):
     deny: DeniedNames = DeniedNames(())
     exclude: PathPatterns = PathPatterns(())
     ignore_names: IgnoredNames = IgnoredNames(frozenset())
+    preset: Preset = Preset.DEFAULT
     # None, not an empty tuple: unset means the default rules, not no rules.
     select: Selectors | None = None
     extend_select: Selectors = Selectors(())
@@ -173,6 +175,7 @@ class Settings(BaseModel):
 
     def _selection(self, matching: PathOverrides) -> Selection:
         return selection(
+            self.preset,
             self.select,
             self.extend_select,
             Selectors(self.ignore.root + matching.ignored().root),

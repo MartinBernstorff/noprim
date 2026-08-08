@@ -4,6 +4,7 @@ from iterpy import Arr
 from noprim_core.checker import check_source
 from noprim_core.config import CheckConfig, IgnoredNames
 from noprim_core.rules.code import Selector, Selectors
+from noprim_core.rules.preset import Preset
 from noprim_core.rules.registry import default_selection, selection
 from noprim_core.site import Filename, Surface
 from noprim_core.source import SourceCode
@@ -15,7 +16,9 @@ def _config() -> CheckConfig:
 
 
 def _selecting(codes: Selectors) -> CheckConfig:
-    return CheckConfig(selection=selection(codes, Selectors(()), Selectors(())))
+    return CheckConfig(
+        selection=selection(Preset.DEFAULT, codes, Selectors(()), Selectors(()))
+    )
 
 
 def _check(source: SourceCode, config: CheckConfig | None = None) -> Arr[Violation]:

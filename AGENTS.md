@@ -90,6 +90,11 @@ top of the top-level lists into a `CheckConfig` — is pure logic over a relativ
 so it lives in core alongside `pathspec`. `noprim_io.settings` does the I/O half:
 walking up for the file and reading it through `pydantic-settings`' TOML sources.
 
+`preset` names the base selection the other rule keys work on top of, as pyrefly's does:
+`select` replaces it, `extend-select` adds and `ignore` subtracts. Only `default` and
+`all` exist, because a rule is either on by default or it is not — there is no third
+tier for a `strict` between them to name.
+
 An override carries `allow`, `deny` and `ignore`. `ignore` names rule codes and only
 ever *subtracts* — there is deliberately no per-path `select`, so the top-level
 selection stays the ceiling and `--select NOPRIM001` still means only `NOPRIM001` ran.

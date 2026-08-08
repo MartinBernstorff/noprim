@@ -16,6 +16,7 @@ from noprim_cli.render import (
     render,
 )
 from noprim_core.baseline import Baseline, BaselineOutcome, apply_baseline
+from noprim_core.rules.preset import Preset
 from noprim_core.settings import Settings
 from noprim_core.verdict import Verdict
 from noprim_io.baseline import (
@@ -116,6 +117,13 @@ def check(  # noqa: PLR0913, PLR0917
     exclude: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option("--exclude", help="Glob to skip while walking. Repeatable."),
+    ] = None,
+    preset: Annotated[  # noprim: ignore
+        Preset | None,
+        typer.Option(
+            "--preset",
+            help="Which rules to start from before select, extend-select and ignore.",
+        ),
     ] = None,
     select: Annotated[  # noprim: ignore
         list[str] | None,
