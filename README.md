@@ -19,30 +19,32 @@ Every violation names the rule that fired, and rules are numbered by smell and b
 surface — so a codebase drowning in return types can silence `NOPRIM002` without
 allowing `int` everywhere.
 
-Every rule runs unless you turn it off. A codebase that has not configured noprim sees
+Every rule runs unless you turn it off, bar the handful marked `none` below, which are
+a matter of taste rather than a default. A codebase that has not configured noprim sees
 everything noprim has to say and narrows from there, rather than discovering later that
 a rule existed.
 
 ```
-Code       Rule                 Flags                      In core
-NOPRIM001  primitive-parameter  def send(to: str) -> None  yes
-NOPRIM002  primitive-return     def total() -> int         yes
-NOPRIM003  primitive-attribute  class Order: id: str       yes
-NOPRIM004  top-type-parameter   def send(to: Any) -> None  no
-NOPRIM005  top-type-return      def payload() -> Any       no
-NOPRIM006  top-type-attribute   class Order: meta: Any     no
-NOPRIM007  predicate-return     def is_ready() -> bool     no
+Code       Rule                 Flags                      Preset
+NOPRIM001  primitive-parameter  def send(to: str) -> None  core
+NOPRIM002  primitive-return     def total() -> int         core
+NOPRIM003  primitive-attribute  class Order: id: str       core
+NOPRIM004  top-type-parameter   def send(to: Any) -> None  all
+NOPRIM005  top-type-return      def payload() -> Any       all
+NOPRIM006  top-type-attribute   class Order: meta: Any     all
+NOPRIM007  predicate-return     def is_ready() -> bool     none
 ```
 
-`--preset` chooses which set to start from — `all` for every rule there is, which is
-what you get without one, and `core` for the three marked above, the rules a codebase
-almost always wants first. `--select` replaces that set outright, `--extend-select`
-adds to it and `--ignore` subtracts, all three taking code prefixes as ruff does. A
-selector that names no rule is an error.
+`--preset` chooses which set to start from — `all` for every rule marked `all` or
+`core` above, which is what you get without one, and `core` for the three marked
+`core`, the rules a codebase almost always wants first. `--select` replaces that set
+outright, `--extend-select` adds to it and `--ignore` subtracts, all three taking code
+prefixes as ruff does. A selector that names no rule is an error. A rule in no preset
+is only ever reached by `--select` or `--extend-select`.
 
 ```console
-$ noprim check .                             # every rule there is
-$ noprim check --ignore NOPRIM007 .          # every rule but predicates
+$ noprim check .                             # every rule a preset turns on
+$ noprim check --extend-select NOPRIM007 .   # those, plus predicates
 $ noprim check --preset core .               # parameters, returns and attributes
 $ noprim check --preset core --extend-select NOPRIM004 .   # those, plus Any on parameters
 ```
@@ -97,9 +99,9 @@ Some signatures are not the author's to choose, so noprim does not report them:
   are untouched.
 - **Predicates** — functions returning a bare `bool`. A domain type around the answer
   to a yes-or-no question rarely earns its keep, so `NOPRIM002` leaves them to
-  `NOPRIM007` — the rule to `--ignore` if you agree. Only the bare return type is
-  carved out: a `bool` parameter, attribute, `list[bool]` or `bool | None` is still
-  reported.
+  `NOPRIM007` — the rule to `--extend-select` if you disagree, since no preset turns it
+  on. Only the bare return type is carved out: a `bool` parameter, attribute,
+  `list[bool]` or `bool | None` is still reported.
 - **`self` and `cls`.**
 - **`Literal[...]` arguments**, which are values rather than types.
 - **Parameters of pytest tests and fixtures**, in files matching `test_*.py` or

@@ -5,7 +5,7 @@ from noprim_core.checker import check_source
 from noprim_core.config import CheckConfig, NamePatterns
 from noprim_core.rules.code import Selector, Selectors
 from noprim_core.rules.preset import Preset
-from noprim_core.rules.registry import core_selection, selection
+from noprim_core.rules.registry import core_selection, preset_selection, selection
 from noprim_core.site import Filename, Surface
 from noprim_core.source import SourceCode
 from noprim_core.violation import Violation
@@ -90,8 +90,11 @@ def test_flags_primitive_return() -> None:
     ]
 
 
-def test_predicates_are_outside_the_core_preset() -> None:
-    assert list(_check(SourceCode("def is_ready(x: Name) -> bool: ...\n"))) == []
+@pytest.mark.parametrize("preset", list(Preset), ids=lambda preset: preset.value)
+def test_predicates_are_outside_every_preset(preset: Preset) -> None:
+    config = CheckConfig(selection=preset_selection(preset))
+    source = SourceCode("def is_ready(x: Name) -> bool: ...\n")
+    assert list(_check(source, config)) == []
 
 
 def test_selecting_the_predicate_rule_reports_bool_returns() -> None:
@@ -322,9 +325,7 @@ def test_ignored_names_leave_return_types_alone() -> None:
 
 def test_an_ignored_name_covers_every_rule_on_that_surface() -> None:
     config = CheckConfig(
-        selection=selection(
-            Preset.ALL, None, Selectors(()), Selectors((Selector("NOPRIM007"),))
-        ),
+        selection=selection(Preset.ALL, None, Selectors(()), Selectors(())),
         ignored_parameter_names=NamePatterns(("x",)),
     )
     violations = _check(SourceCode("def f(x: Any, y: Any) -> None: ...\n"), config)

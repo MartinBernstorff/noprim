@@ -12,6 +12,7 @@ from noprim_core.rules.registry import (
     RULES,
     UnknownRuleCodeError,
     UnknownSelectorError,
+    all_selection,
     core_selection,
     rule_for,
     selection,
@@ -80,11 +81,15 @@ def test_the_core_preset_is_the_primitive_rules() -> None:
 
 @pytest.mark.parametrize(
     ("preset", "expected"),
-    [(Preset.CORE, core_selection()), (Preset.ALL, _every_code())],
+    [(Preset.CORE, core_selection()), (Preset.ALL, all_selection())],
     ids=["core", "all"],
 )
 def test_a_preset_is_the_base_selection(preset: Preset, expected: Selection) -> None:
     assert selection(preset, None, _nothing(), _nothing()) == expected
+
+
+def test_an_opt_in_rule_is_in_no_preset() -> None:
+    assert not all_selection().contains(RuleCode("NOPRIM007"))
 
 
 def test_select_replaces_the_preset() -> None:

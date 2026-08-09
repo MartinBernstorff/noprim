@@ -118,7 +118,7 @@ def test_a_rule_flag_replaces_its_key_without_dropping_per_path_entries(
     _ = (tmp_path / "legacy" / "a.py").write_text("def f() -> str: ...\n")
     monkeypatch.chdir(tmp_path)
 
-    result = runner.invoke(app, ["check", "--ignore", "NOPRIM007"])
+    result = runner.invoke(app, ["check", "--ignore", "NOPRIM003"])
 
     assert result.exit_code == 0
 
@@ -197,12 +197,12 @@ def test_deny_of_a_top_type_reports_it_without_the_flag(tmp_path: Path) -> None:
     assert 'parameter "y"' not in result.stdout
 
 
-def test_predicates_are_reported_until_deselected(tmp_path: Path) -> None:
+def test_predicates_are_reported_only_once_selected(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
     _ = target.write_text("def is_ready(x: Name) -> bool: ...\n")
 
-    skipped = runner.invoke(app, ["check", "--preset", "core", str(target)])
-    checked = runner.invoke(app, ["check", str(target)])
+    skipped = runner.invoke(app, ["check", str(target)])
+    checked = runner.invoke(app, ["check", "--extend-select", "NOPRIM007", str(target)])
 
     assert skipped.stdout.splitlines() == []
     assert checked.stdout.splitlines() == [
@@ -233,28 +233,28 @@ def test_a_selector_prefix_turns_on_every_rule(tmp_path: Path) -> None:
     ]
 
 
-def test_every_rule_runs_without_a_preset(tmp_path: Path) -> None:
+def test_every_preset_rule_runs_without_a_preset(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
-    _ = target.write_text("def is_ready(x: Any) -> bool: ...\n")
+    _ = target.write_text("def f(x: Any) -> int: ...\n")
 
     result = runner.invoke(app, ["check", str(target)])
 
     assert result.stdout.splitlines() == [
-        f'{target}:1:17: NOPRIM004 parameter "x" is annotated "Any"',
-        f'{target}:1:25: NOPRIM007 return type is annotated "bool"',
+        f'{target}:1:10: NOPRIM004 parameter "x" is annotated "Any"',
+        f'{target}:1:18: NOPRIM002 return type is annotated "int"',
     ]
 
 
 def test_ignore_subtracts_from_the_all_preset(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
-    _ = target.write_text("def is_ready(x: Any) -> bool: ...\n")
+    _ = target.write_text("def f(x: Any) -> int: ...\n")
 
     result = runner.invoke(
-        app, ["check", "--preset", "all", "--ignore", "NOPRIM007", str(target)]
+        app, ["check", "--preset", "all", "--ignore", "NOPRIM002", str(target)]
     )
 
     assert result.stdout.splitlines() == [
-        f'{target}:1:17: NOPRIM004 parameter "x" is annotated "Any"'
+        f'{target}:1:10: NOPRIM004 parameter "x" is annotated "Any"'
     ]
 
 
@@ -678,14 +678,14 @@ def test_the_preset_flag_replaces_the_one_from_the_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _project(ExistingDirectory(tmp_path), ConfigText('preset = "core"\n'))
-    _ = (tmp_path / "a.py").write_text("def is_ready(x: Name) -> bool: ...\n")
+    _ = (tmp_path / "a.py").write_text("def f(x: Any) -> None: ...\n")
     monkeypatch.chdir(tmp_path)
 
     under_config = runner.invoke(app, ["check", "a.py"])
     overridden = runner.invoke(app, ["check", "--preset", "all", "a.py"])
 
     assert under_config.stdout.splitlines() == []
-    assert "NOPRIM007" in overridden.stdout
+    assert "NOPRIM004" in overridden.stdout
 
 
 def test_a_per_path_override_from_the_config_is_applied(
