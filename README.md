@@ -199,43 +199,40 @@ those, for a codebase that would rather not suppress them a line at a time.
 │   paths      <path>  Files or directories to check.                          │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --allow                                      <str>        Remove a type from │
-│                                                           the deny-list.     │
-│                                                           Repeatable.        │
-│ --deny                                       <str>        Add a type to the  │
+│ --allow                                      <str>        Remove these types │
+│                                                           from the           │
 │                                                           deny-list.         │
+│                                                           Repeatable.        │
+│ --deny                                       <str>        Add these types to │
+│                                                           the deny-list.     │
 │                                                           Repeatable.        │
 │ --ignore-names                               <str>        Skip parameters    │
 │                                                           and attributes     │
-│                                                           matching this      │
-│                                                           glob. Repeatable.  │
+│                                                           matching these     │
+│                                                           globs. Repeatable. │
 │ --ignore-param-na…                           <str>        Skip parameters    │
-│                                                           matching this      │
-│                                                           glob. Repeatable.  │
+│                                                           matching these     │
+│                                                           globs. Repeatable. │
 │ --ignore-attribut…                           <str>        Skip attributes    │
-│                                                           matching this      │
-│                                                           glob. Repeatable.  │
+│                                                           matching these     │
+│                                                           globs. Repeatable. │
 │ --ignore-inner-cl…                           <str>        Skip the body of a │
 │                                                           nested class       │
-│                                                           matching this      │
-│                                                           glob. Repeatable.  │
+│                                                           matching these     │
+│                                                           globs. Repeatable. │
 │ --exempt-typer-ar…      --no-exempt-type…                 Skip bool          │
 │                                                           parameters of a    │
 │                                                           Typer command or   │
 │                                                           callback.          │
-│ --exclude                                    <str>        Glob to skip while │
-│                                                           walking. Gitignore │
-│                                                           syntax, anchored   │
-│                                                           at the config      │
-│                                                           file's directory,  │
-│                                                           or the repo root   │
-│                                                           when there is      │
-│                                                           none. Repeatable.  │
-│ --preset                                     <core|all>   Which rules to     │
-│                                                           start from before  │
+│ --exclude                                    <str>        Globs to skip      │
+│                                                           while walking,     │
+│                                                           anchored at the    │
+│                                                           config.            │
+│                                                           Repeatable.        │
+│ --preset                                     <core|all>   The rule set       │
 │                                                           select,            │
 │                                                           extend-select and  │
-│                                                           ignore.            │
+│                                                           ignore work on.    │
 │ --select                                     <str>        Run these rule     │
 │                                                           codes instead of   │
 │                                                           the preset's.      │
@@ -344,12 +341,38 @@ extend-select = ["NOPRIM004"]
 ignore = ["NOPRIM002"]
 ```
 
-Every key is a flag of the same name, and passing that flag replaces the key outright
-rather than adding to it — `--deny Enum` ignores whatever `deny` the file set.
+Every key but `per-path` is a flag of the same name, and passing that flag replaces the
+key outright rather than adding to it — `--deny Enum` ignores whatever `deny` the file
+set.
 
 Every rule ships on and every exemption ships off, so the rule keys here only ever
 narrow what you already get. The deny-list is the one axis with room above the default:
 `deny` adds to it.
+
+Every key noprim accepts, with the value you get when you leave it out. Anything else
+is an error rather than a silently ignored line.
+
+```
+Key                     Type                Default  Description
+allow                   list of type names  []       Remove these types from the deny-list.
+deny                    list of type names  []       Add these types to the deny-list.
+exclude                 list of globs       []       Globs to skip while walking, anchored at the config.
+exempt-typer-args       true | false        false    Skip bool parameters of a Typer command or callback.
+extend-select           list of rule codes  []       Run these rule codes as well as the selected ones.
+ignore                  list of rule codes  []       Drop these rule codes from the run.
+ignore-attribute-names  list of globs       []       Skip attributes matching these globs.
+ignore-inner-classes    list of globs       []       Skip the body of a nested class matching these globs.
+ignore-names            list of globs       []       Skip parameters and attributes matching these globs.
+ignore-param-names      list of globs       []       Skip parameters matching these globs.
+per-path                list of tables      []       Overrides applied on top of the keys above, by path.
+preset                  "core" | "all"      "all"    The rule set select, extend-select and ignore work on.
+select                  list of rule codes  unset    Run these rule codes instead of the preset's. Prefixes count.
+```
+
+Globs are anchored at the directory holding the config file, or at the repo root when
+there is none — so `--exclude` behaves the same either way. `select` is the one key
+with no default value: leaving it out means the preset's rules, which is not the same
+as selecting none.
 
 ### Per-path overrides
 
@@ -374,10 +397,24 @@ An override's name patterns are appended to the top level's, and gitignore's
 last-match-wins applies across the join — so `ignore-param-names = ["!value"]` in an
 override puts `value` back under the rules for the paths it matches.
 
-Overrides carry `allow`, `deny`, `ignore`, the three `ignore-*-names` keys and
-`ignore-inner-classes`.
+An override carries a subset of the top-level keys, plus the `paths` that say where it
+applies:
+
+```
+Key                     Type                Default   Description
+allow                   list of type names  []        Remove these types from the deny-list.
+deny                    list of type names  []        Add these types to the deny-list.
+ignore                  list of rule codes  []        Drop these rule codes from the run.
+ignore-attribute-names  list of globs       []        Skip attributes matching these globs.
+ignore-inner-classes    list of globs       []        Skip the body of a nested class matching these globs.
+ignore-names            list of globs       []        Skip parameters and attributes matching these globs.
+ignore-param-names      list of globs       []        Skip parameters matching these globs.
+paths                   list of globs       required  Globs the entry applies to. Gitignore syntax.
+```
+
 `exclude` is not among them — it decides which files are walked at all, before any path
-has a config.
+has a config — and neither is `preset`, `select` or `extend-select`: the top-level
+selection is the ceiling, so an override can drop a rule code but never add one.
 
 Patterns use gitignore syntax, anchored at the directory holding the config, so
 `test_*.py` matches at any depth and `domain/**` does not. A leading `!` re-includes, as

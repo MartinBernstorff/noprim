@@ -5,9 +5,10 @@ from pathlib import Path
 
 import pytest
 from iterpy import Arr
-from pydantic import RootModel
+from pydantic import BaseModel, RootModel
 
 import noprim_types
+from noprim_core.settings import FieldName, PathOverride, Settings, description
 
 
 class DocumentName(RootModel[str]):
@@ -60,6 +61,31 @@ def test_no_rendered_document_carries_a_documator_marker(
     document: DocumentName,
 ) -> None:
     assert "[documator:" not in _rendered(document).root
+
+
+class ConfigKey(RootModel[tuple[type[BaseModel], FieldName]]):
+    pass
+
+
+def _config_keys() -> list[ConfigKey]:
+    return [
+        ConfigKey((model, FieldName(name)))
+        for model in (Settings, PathOverride)
+        for name in model.model_fields
+    ]
+
+
+# 64 is what keeps the generated table inside a terminal width.
+@pytest.mark.parametrize(
+    "key", _config_keys(), ids=lambda key: f"{key.root[0].__name__}.{key.root[1].root}"
+)
+def test_every_config_key_carries_a_description_the_table_can_hold(
+    key: ConfigKey,
+) -> None:
+    model, name = key.root
+    described = description(model, name).root
+    assert described != ""
+    assert len(described) <= 64
 
 
 def _moon_tasks() -> Names:

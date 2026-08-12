@@ -3,7 +3,7 @@ from typing import Self, TypeVar
 
 import pathspec
 from iterpy import Arr
-from pydantic import BaseModel, ConfigDict, RootModel, model_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
 
 from noprim_core.config import (
     CheckConfig,
@@ -91,16 +91,34 @@ class FieldName(RootModel[str]):
     pass
 
 
-def _to_kebab(name: FieldName) -> FieldName:
+def key_name(name: FieldName) -> FieldName:
     return FieldName(name.root.replace("_", "-"))
 
 
 # pydantic fixes this signature, so the primitive cannot be wrapped.
 def _alias(name: str) -> str:  # noprim: ignore
-    return _to_kebab(FieldName(name)).root
+    return key_name(FieldName(name)).root
 
 
 _SCHEMA = ConfigDict(extra="forbid", populate_by_name=True, alias_generator=_alias)
+
+
+class Description(RootModel[str]):
+    pass
+
+
+class UndescribedKeyError(ValueError):
+    def __init__(self, name: FieldName) -> None:
+        super().__init__(f"config key without a description: {name.root}")
+
+
+# The one place a key's prose lives: the CLI's --help and the README's table both
+# read it here, so neither can describe a key the other contradicts.
+def description(model: type[BaseModel], name: FieldName) -> Description:
+    described = model.model_fields[name.root].description
+    if described is None:
+        raise UndescribedKeyError(name)
+    return Description(described)
 
 
 # The keys that name symbols rather than types, shared by the top level and by an
@@ -108,10 +126,22 @@ _SCHEMA = ConfigDict(extra="forbid", populate_by_name=True, alias_generator=_ali
 class NameKeys(BaseModel):
     model_config = _SCHEMA
 
-    ignore_names: NamePatterns = NamePatterns(())
-    ignore_param_names: NamePatterns = NamePatterns(())
-    ignore_attribute_names: NamePatterns = NamePatterns(())
-    ignore_inner_classes: NamePatterns = NamePatterns(())
+    ignore_names: NamePatterns = Field(
+        default=NamePatterns(()),
+        description="Skip parameters and attributes matching these globs.",
+    )
+    ignore_param_names: NamePatterns = Field(
+        default=NamePatterns(()),
+        description="Skip parameters matching these globs.",
+    )
+    ignore_attribute_names: NamePatterns = Field(
+        default=NamePatterns(()),
+        description="Skip attributes matching these globs.",
+    )
+    ignore_inner_classes: NamePatterns = Field(
+        default=NamePatterns(()),
+        description="Skip the body of a nested class matching these globs.",
+    )
 
     def parameter_names(self) -> NamePatterns:
         return self.ignore_names.joined(self.ignore_param_names)
@@ -120,11 +150,25 @@ class NameKeys(BaseModel):
         return self.ignore_names.joined(self.ignore_attribute_names)
 
 
-class PathOverride(NameKeys):
-    paths: PathPatterns
-    allow: AllowedNames = AllowedNames(())
-    deny: DeniedNames = DeniedNames(())
-    ignore: Selectors = Selectors(())
+# The keys an override shares with the top level, declared once so the two cannot
+# describe them differently.
+class SharedKeys(NameKeys):
+    allow: AllowedNames = Field(
+        default=AllowedNames(()),
+        description="Remove these types from the deny-list.",
+    )
+    deny: DeniedNames = Field(
+        default=DeniedNames(()), description="Add these types to the deny-list."
+    )
+    ignore: Selectors = Field(
+        default=Selectors(()), description="Drop these rule codes from the run."
+    )
+
+
+class PathOverride(SharedKeys):
+    paths: PathPatterns = Field(
+        description="Globs the entry applies to. Gitignore syntax."
+    )
 
     def matches(self, path: RelativePath) -> Verdict:
         # Empty means the file lies outside the tree the patterns are anchored to.
@@ -180,21 +224,36 @@ def _validated_entry(override: PathOverride, denied: DeniedTypes) -> None:
         raise PerPathError(override.paths, error) from error
 
 
-class Settings(NameKeys):
-    allow: AllowedNames = AllowedNames(())
-    deny: DeniedNames = DeniedNames(())
-    exclude: PathPatterns = PathPatterns(())
+class Settings(SharedKeys):
+    exclude: PathPatterns = Field(
+        default=PathPatterns(()),
+        description="Globs to skip while walking, anchored at the config.",
+    )
     # Every rule: an unconfigured run says everything it has to say, and a codebase
     # narrows from there rather than discovering later that a rule existed.
-    preset: Preset = Preset.ALL
+    preset: Preset = Field(
+        default=Preset.ALL,
+        description="The rule set select, extend-select and ignore work on.",
+    )
     # None, not an empty tuple: unset means the preset's rules, not no rules.
-    select: Selectors | None = None
-    extend_select: Selectors = Selectors(())
-    ignore: Selectors = Selectors(())
+    select: Selectors | None = Field(
+        default=None,
+        description="Run these rule codes instead of the preset's. Prefixes count.",
+    )
+    extend_select: Selectors = Field(
+        default=Selectors(()),
+        description="Run these rule codes as well as the selected ones.",
+    )
     # Off, like every other exemption a key controls: hiding a violation is the
     # codebase's decision to make, not one it inherits.
-    exempt_typer_args: Verdict = Verdict(root=False)
-    per_path: PathOverrides = PathOverrides(())
+    exempt_typer_args: Verdict = Field(
+        default=Verdict(root=False),
+        description="Skip bool parameters of a Typer command or callback.",
+    )
+    per_path: PathOverrides = Field(
+        default=PathOverrides(()),
+        description="Overrides applied on top of the keys above, by path.",
+    )
 
     @model_validator(mode="after")
     def _names_are_coherent(self) -> Self:
