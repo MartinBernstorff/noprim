@@ -91,13 +91,13 @@ class FieldName(RootModel[str]):
     pass
 
 
-def _to_kebab(name: FieldName) -> FieldName:
+def key_name(name: FieldName) -> FieldName:
     return FieldName(name.root.replace("_", "-"))
 
 
 # pydantic fixes this signature, so the primitive cannot be wrapped.
 def _alias(name: str) -> str:  # noprim: ignore
-    return _to_kebab(FieldName(name)).root
+    return key_name(FieldName(name)).root
 
 
 _SCHEMA = ConfigDict(extra="forbid", populate_by_name=True, alias_generator=_alias)
@@ -119,10 +119,6 @@ def description(model: type[BaseModel], name: FieldName) -> Description:
     if described is None:
         raise UndescribedKeyError(name)
     return Description(described)
-
-
-def key_name(name: FieldName) -> FieldName:
-    return _to_kebab(name)
 
 
 # The keys that name symbols rather than types, shared by the top level and by an
@@ -154,10 +150,9 @@ class NameKeys(BaseModel):
         return self.ignore_names.joined(self.ignore_attribute_names)
 
 
-class PathOverride(NameKeys):
-    paths: PathPatterns = Field(
-        description="Globs the entry applies to. Gitignore syntax."
-    )
+# The keys an override shares with the top level, declared once so the two cannot
+# describe them differently.
+class SharedKeys(NameKeys):
     allow: AllowedNames = Field(
         default=AllowedNames(()),
         description="Remove these types from the deny-list.",
@@ -167,6 +162,12 @@ class PathOverride(NameKeys):
     )
     ignore: Selectors = Field(
         default=Selectors(()), description="Drop these rule codes from the run."
+    )
+
+
+class PathOverride(SharedKeys):
+    paths: PathPatterns = Field(
+        description="Globs the entry applies to. Gitignore syntax."
     )
 
     def matches(self, path: RelativePath) -> Verdict:
@@ -223,17 +224,10 @@ def _validated_entry(override: PathOverride, denied: DeniedTypes) -> None:
         raise PerPathError(override.paths, error) from error
 
 
-class Settings(NameKeys):
-    allow: AllowedNames = Field(
-        default=AllowedNames(()),
-        description="Remove these types from the deny-list.",
-    )
-    deny: DeniedNames = Field(
-        default=DeniedNames(()), description="Add these types to the deny-list."
-    )
+class Settings(SharedKeys):
     exclude: PathPatterns = Field(
         default=PathPatterns(()),
-        description="Globs to skip while walking. Gitignore syntax.",
+        description="Globs to skip while walking, anchored at the config.",
     )
     # Every rule: an unconfigured run says everything it has to say, and a codebase
     # narrows from there rather than discovering later that a rule existed.
@@ -249,9 +243,6 @@ class Settings(NameKeys):
     extend_select: Selectors = Field(
         default=Selectors(()),
         description="Run these rule codes as well as the selected ones.",
-    )
-    ignore: Selectors = Field(
-        default=Selectors(()), description="Drop these rule codes from the run."
     )
     # Off, like every other exemption a key controls: hiding a violation is the
     # codebase's decision to make, not one it inherits.

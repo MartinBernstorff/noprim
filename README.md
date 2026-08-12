@@ -225,8 +225,9 @@ those, for a codebase that would rather not suppress them a line at a time.
 │                                                           Typer command or   │
 │                                                           callback.          │
 │ --exclude                                    <str>        Globs to skip      │
-│                                                           while walking.     │
-│                                                           Gitignore syntax.  │
+│                                                           while walking,     │
+│                                                           anchored at the    │
+│                                                           config.            │
 │                                                           Repeatable.        │
 │ --preset                                     <core|all>   The rule set       │
 │                                                           select,            │
@@ -340,8 +341,9 @@ extend-select = ["NOPRIM004"]
 ignore = ["NOPRIM002"]
 ```
 
-Every key is a flag of the same name, and passing that flag replaces the key outright
-rather than adding to it — `--deny Enum` ignores whatever `deny` the file set.
+Every key but `per-path` is a flag of the same name, and passing that flag replaces the
+key outright rather than adding to it — `--deny Enum` ignores whatever `deny` the file
+set.
 
 Every rule ships on and every exemption ships off, so the rule keys here only ever
 narrow what you already get. The deny-list is the one axis with room above the default:
@@ -354,7 +356,7 @@ is an error rather than a silently ignored line.
 Key                     Type                Default  Description
 allow                   list of type names  []       Remove these types from the deny-list.
 deny                    list of type names  []       Add these types to the deny-list.
-exclude                 list of globs       []       Globs to skip while walking. Gitignore syntax.
+exclude                 list of globs       []       Globs to skip while walking, anchored at the config.
 exempt-typer-args       true | false        false    Skip bool parameters of a Typer command or callback.
 extend-select           list of rule codes  []       Run these rule codes as well as the selected ones.
 ignore                  list of rule codes  []       Drop these rule codes from the run.
@@ -411,8 +413,8 @@ paths                   list of globs       required  Globs the entry applies to
 ```
 
 `exclude` is not among them — it decides which files are walked at all, before any path
-has a config — and neither is `preset`, `select` or `extend-select`, since an override
-only ever subtracts rules.
+has a config — and neither is `preset`, `select` or `extend-select`: the top-level
+selection is the ceiling, so an override can drop a rule code but never add one.
 
 Patterns use gitignore syntax, anchored at the directory holding the config, so
 `test_*.py` matches at any depth and `domain/**` does not. A leading `!` re-includes, as

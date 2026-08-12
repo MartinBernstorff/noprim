@@ -207,8 +207,9 @@ table is not a config file, so it does not stop the search.
 !../docs-support/scripts/config_example.sh ../docs-support/fixtures/config
 ```
 
-Every key is a flag of the same name, and passing that flag replaces the key outright
-rather than adding to it — `--deny Enum` ignores whatever `deny` the file set.
+Every key but `per-path` is a flag of the same name, and passing that flag replaces the
+key outright rather than adding to it — `--deny Enum` ignores whatever `deny` the file
+set.
 
 Every rule ships on and every exemption ships off, so the rule keys here only ever
 narrow what you already get. The deny-list is the one axis with room above the default:
@@ -248,8 +249,8 @@ applies:
 ```
 
 `exclude` is not among them — it decides which files are walked at all, before any path
-has a config — and neither is `preset`, `select` or `extend-select`, since an override
-only ever subtracts rules.
+has a config — and neither is `preset`, `select` or `extend-select`: the top-level
+selection is the ceiling, so an override can drop a rule code but never add one.
 
 Patterns use gitignore syntax, anchored at the directory holding the config, so
 `test_*.py` matches at any depth and `domain/**` does not. A leading `!!` re-includes, as

@@ -63,31 +63,29 @@ def test_no_rendered_document_carries_a_documator_marker(
     assert "[documator:" not in _rendered(document).root
 
 
-class Described(RootModel[tuple[type[BaseModel], FieldName]]):
+class ConfigKey(RootModel[tuple[type[BaseModel], FieldName]]):
     pass
 
 
-def _described() -> list[Described]:
+def _config_keys() -> list[ConfigKey]:
     return [
-        Described((model, FieldName(name)))
+        ConfigKey((model, FieldName(name)))
         for model in (Settings, PathOverride)
         for name in model.model_fields
     ]
 
 
-# The configuration table is generated from the schema, so a key cannot go missing
-# from it — only its prose can, which is what this catches. The width keeps the
-# rendered table from needing a horizontal scrollbar.
+# 64 is what keeps the generated table inside a terminal width.
 @pytest.mark.parametrize(
-    "described",
-    _described(),
-    ids=lambda key: f"{key.root[0].__name__}.{key.root[1].root}",
+    "key", _config_keys(), ids=lambda key: f"{key.root[0].__name__}.{key.root[1].root}"
 )
 def test_every_config_key_carries_a_description_the_table_can_hold(
-    described: Described,
+    key: ConfigKey,
 ) -> None:
-    model, name = described.root
-    assert len(description(model, name).root) <= 64
+    model, name = key.root
+    described = description(model, name).root
+    assert described != ""
+    assert len(described) <= 64
 
 
 def _moon_tasks() -> Names:
