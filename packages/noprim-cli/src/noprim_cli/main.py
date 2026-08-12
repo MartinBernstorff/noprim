@@ -1,11 +1,12 @@
 from pathlib import Path
 from time import perf_counter
 from tomllib import TOMLDecodeError
-from typing import Annotated, NoReturn
+from typing import Annotated, NoReturn, get_args, get_origin
 
 import typer
 from iterpy import Arr
 from pydantic import RootModel, ValidationError
+from pydantic.fields import FieldInfo
 
 from noprim_cli.render import (
     Duration,
@@ -21,7 +22,7 @@ from noprim_cli.render import (
 )
 from noprim_core.baseline import Baseline, BaselineOutcome, apply_baseline
 from noprim_core.rules.preset import Preset
-from noprim_core.settings import Settings
+from noprim_core.settings import FieldName, Settings, description
 from noprim_io.baseline import (
     BaselinePath,
     MalformedBaselineError,
@@ -114,6 +115,26 @@ def _axes(names: AxisNames) -> GroupAxes:
     return GroupAxes(axes)
 
 
+def _repeatable(field: FieldInfo) -> Verdict:
+    roots = Arr(
+        [
+            declared.model_fields["root"].annotation
+            for declared in get_args(field.annotation) or (field.annotation,)
+            if isinstance(declared, type) and issubclass(declared, RootModel)
+        ]
+    )
+    return Verdict.any(roots.map(lambda root: Verdict(get_origin(root) is tuple)))
+
+
+# A flag's help is its config key's description, so --help and the configuration
+# table in the README cannot disagree about what a key does.
+def _help(name: FieldName) -> str:  # noprim: ignore
+    described = description(Settings, name)
+    if _repeatable(Settings.model_fields[name.root]):
+        return f"{described.root} Repeatable."
+    return described.root
+
+
 class Overrides(RootModel[dict[str, object]]):
     pass
 
@@ -160,83 +181,60 @@ def check(  # noqa: PLR0913, PLR0917
     ] = None,
     allow: Annotated[  # noprim: ignore
         list[str] | None,
-        typer.Option("--allow", help="Remove a type from the deny-list. Repeatable."),
+        typer.Option("--allow", help=_help(FieldName("allow"))),
     ] = None,
     deny: Annotated[  # noprim: ignore
         list[str] | None,
-        typer.Option("--deny", help="Add a type to the deny-list. Repeatable."),
+        typer.Option("--deny", help=_help(FieldName("deny"))),
     ] = None,
     ignore_names: Annotated[  # noprim: ignore
         list[str] | None,
-        typer.Option(
-            "--ignore-names",
-            help="Skip parameters and attributes matching this glob. Repeatable.",
-        ),
+        typer.Option("--ignore-names", help=_help(FieldName("ignore_names"))),
     ] = None,
     ignore_param_names: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option(
-            "--ignore-param-names",
-            help="Skip parameters matching this glob. Repeatable.",
+            "--ignore-param-names", help=_help(FieldName("ignore_param_names"))
         ),
     ] = None,
     ignore_attribute_names: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option(
-            "--ignore-attribute-names",
-            help="Skip attributes matching this glob. Repeatable.",
+            "--ignore-attribute-names", help=_help(FieldName("ignore_attribute_names"))
         ),
     ] = None,
     ignore_inner_classes: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option(
-            "--ignore-inner-classes",
-            help="Skip the body of a nested class matching this glob. Repeatable.",
+            "--ignore-inner-classes", help=_help(FieldName("ignore_inner_classes"))
         ),
     ] = None,
     exempt_typer_args: Annotated[  # noprim: ignore
         bool | None,
         typer.Option(
             "--exempt-typer-args/--no-exempt-typer-args",
-            help="Skip bool parameters of a Typer command or callback.",
+            help=_help(FieldName("exempt_typer_args")),
         ),
     ] = None,
     exclude: Annotated[  # noprim: ignore
         list[str] | None,
-        typer.Option(
-            "--exclude",
-            help="Glob to skip while walking. Gitignore syntax, anchored at the "
-            "config file's directory, or the repo root when there is none. "
-            "Repeatable.",
-        ),
+        typer.Option("--exclude", help=_help(FieldName("exclude"))),
     ] = None,
     preset: Annotated[
         Preset | None,
-        typer.Option(
-            "--preset",
-            help="Which rules to start from before select, extend-select and ignore.",
-        ),
+        typer.Option("--preset", help=_help(FieldName("preset"))),
     ] = None,
     select: Annotated[  # noprim: ignore
         list[str] | None,
-        typer.Option(
-            "--select",
-            help="Run these rule codes instead of the preset's. Prefixes count."
-            " Repeatable.",
-        ),
+        typer.Option("--select", help=_help(FieldName("select"))),
     ] = None,
     extend_select: Annotated[  # noprim: ignore
         list[str] | None,
-        typer.Option(
-            "--extend-select",
-            help="Run these rule codes as well as the selected ones. Repeatable.",
-        ),
+        typer.Option("--extend-select", help=_help(FieldName("extend_select"))),
     ] = None,
     ignore: Annotated[  # noprim: ignore
         list[str] | None,
-        typer.Option(
-            "--ignore", help="Drop these rule codes from the run. Repeatable."
-        ),
+        typer.Option("--ignore", help=_help(FieldName("ignore"))),
     ] = None,
     baseline: Annotated[  # noprim: ignore
         Path | None,

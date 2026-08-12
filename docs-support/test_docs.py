@@ -5,9 +5,10 @@ from pathlib import Path
 
 import pytest
 from iterpy import Arr
-from pydantic import RootModel
+from pydantic import BaseModel, RootModel
 
 import noprim_types
+from noprim_core.settings import FieldName, PathOverride, Settings, description
 
 
 class DocumentName(RootModel[str]):
@@ -60,6 +61,33 @@ def test_no_rendered_document_carries_a_documator_marker(
     document: DocumentName,
 ) -> None:
     assert "[documator:" not in _rendered(document).root
+
+
+class Described(RootModel[tuple[type[BaseModel], FieldName]]):
+    pass
+
+
+def _described() -> list[Described]:
+    return [
+        Described((model, FieldName(name)))
+        for model in (Settings, PathOverride)
+        for name in model.model_fields
+    ]
+
+
+# The configuration table is generated from the schema, so a key cannot go missing
+# from it — only its prose can, which is what this catches. The width keeps the
+# rendered table from needing a horizontal scrollbar.
+@pytest.mark.parametrize(
+    "described",
+    _described(),
+    ids=lambda key: f"{key.root[0].__name__}.{key.root[1].root}",
+)
+def test_every_config_key_carries_a_description_the_table_can_hold(
+    described: Described,
+) -> None:
+    model, name = described.root
+    assert len(description(model, name).root) <= 64
 
 
 def _moon_tasks() -> Names:

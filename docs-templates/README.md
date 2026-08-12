@@ -214,6 +214,18 @@ Every rule ships on and every exemption ships off, so the rule keys here only ev
 narrow what you already get. The deny-list is the one axis with room above the default:
 `deny` adds to it.
 
+Every key noprim accepts, with the value you get when you leave it out. Anything else
+is an error rather than a silently ignored line.
+
+```
+!../docs-support/scripts/uv_run.sh python ../docs-support/scripts/tables.py settings
+```
+
+Globs are anchored at the directory holding the config file, or at the repo root when
+there is none — so `--exclude` behaves the same either way. `select` is the one key
+with no default value: leaving it out means the preset's rules, which is not the same
+as selecting none.
+
 ### Per-path overrides
 
 One deny-list for a whole codebase is the wrong shape: the domain deserves stricter
@@ -228,10 +240,16 @@ An override's name patterns are appended to the top level's, and gitignore's
 last-match-wins applies across the join — so `ignore-param-names = ["!value"]` in an
 override puts `value` back under the rules for the paths it matches.
 
-Overrides carry `allow`, `deny`, `ignore`, the three `ignore-*-names` keys and
-`ignore-inner-classes`.
+An override carries a subset of the top-level keys, plus the `paths` that say where it
+applies:
+
+```
+!../docs-support/scripts/uv_run.sh python ../docs-support/scripts/tables.py overrides
+```
+
 `exclude` is not among them — it decides which files are walked at all, before any path
-has a config.
+has a config — and neither is `preset`, `select` or `extend-select`, since an override
+only ever subtracts rules.
 
 Patterns use gitignore syntax, anchored at the directory holding the config, so
 `test_*.py` matches at any depth and `domain/**` does not. A leading `!!` re-includes, as
