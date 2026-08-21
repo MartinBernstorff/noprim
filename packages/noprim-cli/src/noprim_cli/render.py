@@ -10,7 +10,7 @@ from noprim_core.rules.code import RuleCode
 from noprim_core.rules.registry import rule_for
 from noprim_core.site import ColumnNumber, Filename, LineNumber, Qualname, Surface
 from noprim_core.violation import Violation
-from noprim_io.baseline import BaselinePath
+from noprim_io.baseline import BaselineLayout, BaselinePath, BaselineWrite
 from noprim_io.check import CheckReport, ErrorMessage
 from noprim_types.verdict import Verdict
 
@@ -45,7 +45,10 @@ class DisplayText(RootModel[str]):
 
 class WrittenBaseline(BaseModel):
     path: BaselinePath
+    layout: BaselineLayout
     written: Count
+    files: Count
+    deleted: Count
 
 
 class RunOutcome(BaseModel):
@@ -322,8 +325,22 @@ def _summary_line(
 def _summary(outcome: RunOutcome) -> DisplayText:
     if outcome.written is None:
         return _found(outcome.report)
-    written = _plural(outcome.written.written, Noun("violation"))
-    return DisplayText(f"wrote {written} to {outcome.written.path.root}")
+    return _wrote(outcome.written)
+
+
+def _wrote(written: WrittenBaseline) -> DisplayText:
+    violations = _plural(written.written, Noun("violation"))
+    if written.layout == BaselineLayout.SINGLE:
+        return DisplayText(f"wrote {violations} to {written.path.root}")
+    pruned = (
+        f", deleted {_plural(written.deleted, Noun('file'))}"
+        if written.deleted.root > 0
+        else ""
+    )
+    return DisplayText(
+        f"wrote {violations} to {_plural(written.files, Noun('file'))}"
+        f" under {written.path.root}{pruned}"
+    )
 
 
 def _notices(
@@ -381,12 +398,16 @@ def render(outcome: RunOutcome, elapsed: Duration, options: RenderOptions) -> Re
 
 
 def baseline_written(
-    report: CheckReport, outcome: BaselineOutcome, path: BaselinePath
+    report: CheckReport, outcome: BaselineOutcome, write: BaselineWrite
 ) -> RunOutcome:
     return RunOutcome(
         report=report,
         written=WrittenBaseline(
-            path=path, written=Count(len(outcome.regenerated.root))
+            path=write.path,
+            layout=write.layout,
+            written=Count(len(outcome.regenerated.root)),
+            files=Count(write.written.root),
+            deleted=Count(write.deleted.root),
         ),
     )
 

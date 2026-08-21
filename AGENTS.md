@@ -50,11 +50,17 @@ The per-package `pyproject.toml` files are **not** distributions — they have n
 
 ## Baselines
 
-`noprim check --baseline .noprim.json` suppresses violations recorded in that file, writing it when it does not yet exist; `--write-baseline` refreshes an existing one. Entries key on `(file, code, surface, qualname, annotation)` — never a line number — so they survive edits that move code around. The `code` is what keeps two rules firing on one annotation as two entries; it arrived in baseline version 2, and a version-1 file is rejected with a note to rerun with `--write-baseline`.
+`noprim check --baseline .noprim` suppresses violations recorded at that path, writing it when it does not yet exist; `--write-baseline` refreshes an existing one. Entries key on `(file, code, surface, qualname, annotation)` — never a line number — so they survive edits that move code around. The `code` is what keeps two rules firing on one annotation as two entries; it arrived in baseline version 2, and a version-1 baseline is rejected with a note to rerun with `--write-baseline`.
 
 **Check the baseline into git.** It is shared debt: a gitignored one means every developer and CI silently suppresses something different.
 
-Once the file exists, a `check` run never writes to disk. Entries that no longer match are ignored and reported on stderr; they are pruned the next time the file is written. Prune candidates are only the files the run actually analysed, plus entries under a checked path whose file is gone — so re-baselining a subdirectory leaves the rest of the file alone, and a file that stopped parsing keeps its entries rather than losing them to a syntax error.
+`--baseline` names a **directory** by default, holding one JSON file per source file, mirroring the source tree: `src/pkg/mod.py` records into `.noprim/src/pkg/mod.py.json`. One shared file was one file every branch appended to, so every branch that added debt conflicted with every other; a mirrored directory turns that into a rename when a source file moves and a touch of one file when its debt changes. `--baseline-layout single` writes the one shared file instead, and is the escape hatch for a source file above the baseline's own directory — its `../…` key has no file to mirror into, so split refuses rather than writing outside the directory it was given.
+
+A path of the wrong kind is an error naming the other layout, never a silent switch: pointing the default at an existing shared file says to pass `--baseline-layout single`. There is no migration mode — a baseline regenerates from source, so switching is `--baseline <dir> --write-baseline` and deleting the old file. The document schema is the same either way, one `{version, files}` object, so a split file is self-describing and both layouts read through one validator.
+
+Once the baseline exists, a `check` run never writes to disk. Entries that no longer match are ignored and reported on stderr; they are pruned the next time it is written. Prune candidates are only the files the run actually analysed, plus entries under a checked path whose file is gone — so re-baselining a subdirectory leaves the rest alone, and a file that stopped parsing keeps its entries rather than losing them to a syntax error.
+
+That set is also exactly what a split write touches: `BaselineOutcome.touched` is the prunable files plus the files this run found violations in, and every other JSON file is left byte-identical. A partial run must not stomp entries it never looked at — that untouched-bytes guarantee is the whole point of the layout. A file whose entries all went away has its JSON deleted and any directory that leaves empty removed, since git does not track an empty directory.
 
 ## Rules
 

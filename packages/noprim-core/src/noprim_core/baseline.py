@@ -50,11 +50,16 @@ class PrunableFiles(RootModel[frozenset[Filename]]):
     pass
 
 
+class TouchedFiles(RootModel[frozenset[Filename]]):
+    pass
+
+
 class BaselineOutcome(BaseModel):
     reported: tuple[Violation, ...]
     suppressed: tuple[SuppressedViolation, ...]
     stale: tuple[BaselineKey, ...]
     regenerated: Baseline
+    touched: TouchedFiles
 
 
 def apply_baseline(
@@ -80,4 +85,7 @@ def apply_baseline(
         ),
         stale=tuple(sorted(baseline.root - found - untouched)),
         regenerated=Baseline(found | untouched),
+        touched=TouchedFiles(
+            prunable.root | frozenset(entries.map(lambda entry: entry.key.filename))
+        ),
     )
