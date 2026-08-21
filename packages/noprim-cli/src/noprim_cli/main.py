@@ -329,7 +329,7 @@ def check(  # noqa: PLR0913, PLR0917
         report, CheckPaths(targets), path, layout, Verdict(root=refresh)
     )
 
-    if refresh or baseline_exists(path, layout).negated:
+    if refresh or _absent(path, layout):
         try:
             write = write_baseline(path, outcome.regenerated, layout, outcome.touched)
         except (BaselineError, OSError) as error:
@@ -350,6 +350,13 @@ def _emit(rendered: Rendered) -> NoReturn:
 def _fail(error: Exception) -> NoReturn:
     typer.echo(f"error: {error}", err=True)
     raise typer.Exit(2) from error
+
+
+def _absent(path: BaselinePath, layout: BaselineLayout) -> Verdict:
+    try:
+        return baseline_exists(path, layout).negated
+    except BaselineError as error:
+        _fail(error)
 
 
 def _existing_baseline(

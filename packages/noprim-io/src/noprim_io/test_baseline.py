@@ -189,6 +189,26 @@ def test_an_empty_split_directory_is_not_a_baseline_yet(tmp_path: Path) -> None:
     assert read_baseline(path, BaselineLayout.SPLIT) == Baseline.empty()
 
 
+def test_a_shared_file_is_never_read_as_an_absent_split_baseline(
+    tmp_path: Path,
+) -> None:
+    path = BaselinePath(tmp_path / ".noprim.json")
+    _single(path, Baseline.empty())
+
+    with pytest.raises(LayoutMismatchError):
+        _ = baseline_exists(path, BaselineLayout.SPLIT)
+
+
+def test_a_directory_is_never_read_as_an_absent_shared_baseline(
+    tmp_path: Path,
+) -> None:
+    path = BaselinePath(tmp_path / "baseline")
+    path.root.mkdir()
+
+    with pytest.raises(LayoutMismatchError):
+        _ = baseline_exists(path, BaselineLayout.SINGLE)
+
+
 def test_a_source_file_outside_the_baseline_directory_cannot_be_split(
     tmp_path: Path,
 ) -> None:

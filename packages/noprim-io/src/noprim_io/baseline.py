@@ -185,14 +185,6 @@ def _documents(path: BaselinePath) -> Arr[BaselinePath]:
     return Arr(sorted(path.root.rglob("*.json"))).map(BaselinePath)
 
 
-def baseline_exists(path: BaselinePath, layout: BaselineLayout) -> Verdict:
-    if layout == BaselineLayout.SINGLE:
-        return Verdict(path.root.is_file())
-    # An empty directory records nothing, so it is not a baseline yet — otherwise
-    # a hand-made one would suppress everything by never being written.
-    return Verdict(len(_documents(path).to_list()) > 0)
-
-
 def _guarded(path: BaselinePath, layout: BaselineLayout) -> BaselinePath:
     mismatched = (
         path.root.is_file() if layout == BaselineLayout.SPLIT else path.root.is_dir()
@@ -200,6 +192,17 @@ def _guarded(path: BaselinePath, layout: BaselineLayout) -> BaselinePath:
     if mismatched:
         raise LayoutMismatchError(path, layout)
     return path
+
+
+# Guarded, so a path of the wrong kind can never be read as merely absent: that
+# would suppress nothing and report everything instead of naming the other layout.
+def baseline_exists(path: BaselinePath, layout: BaselineLayout) -> Verdict:
+    guarded = _guarded(path, layout)
+    if layout == BaselineLayout.SINGLE:
+        return Verdict(guarded.root.is_file())
+    # An empty directory records nothing, so it is not a baseline yet — otherwise
+    # a hand-made one would suppress everything by never being written.
+    return Verdict(len(_documents(guarded).to_list()) > 0)
 
 
 def _keys(path: BaselinePath) -> frozenset[BaselineKey]:
