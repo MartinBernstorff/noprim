@@ -79,12 +79,15 @@ tasks:
         echo "smoke: violating fixture should exit non-zero"
         exit 1
       fi
-      baseline="$tmp/.noprim.json"
+      baseline="$tmp/.noprim"
       "$bin" check --baseline "$baseline" "$tmp/dirty.py" || {
         echo "smoke: writing a baseline should exit 0"
         exit 1
       }
-      test -f "$baseline" || { echo "smoke: no baseline written"; exit 1; }
+      test -f "$baseline/dirty.py.json" || {
+        echo "smoke: no baseline written"
+        exit 1
+      }
       "$bin" check --baseline "$baseline" "$tmp/dirty.py" || {
         echo "smoke: baselined fixture should exit 0"
         exit 1

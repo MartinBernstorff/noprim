@@ -5,7 +5,7 @@ from typing import Any, cast
 import pytest
 
 from noprim_core.annotations import AnnotationText
-from noprim_core.baseline import Baseline, BaselineKey
+from noprim_core.baseline import Baseline, BaselineKey, TouchedFiles
 from noprim_core.rules.code import RuleCode
 from noprim_core.site import (
     ColumnNumber,
@@ -16,10 +16,14 @@ from noprim_core.site import (
 )
 from noprim_core.violation import Violation
 from noprim_io.baseline import (
+    BaselineLayout,
     BaselinePath,
+    LayoutMismatchError,
     MalformedBaselineError,
+    UnmirrorableFilenameError,
     UnsupportedBaselineVersionError,
     Violations,
+    baseline_exists,
     keyed_violations,
     prunable_files,
     read_baseline,
@@ -45,34 +49,55 @@ def _report(
     return CheckReport(violations=(), errors=errors, checked=checked)
 
 
-def test_round_trips_a_baseline(tmp_path: Path) -> None:
+def _touched(*filenames: Filename) -> TouchedFiles:
+    return TouchedFiles(frozenset(filenames))
+
+
+def _baseline(*keys: BaselineKey) -> Baseline:
+    return Baseline(frozenset(keys))
+
+
+def _single(path: BaselinePath, baseline: Baseline) -> None:
+    _ = write_baseline(path, baseline, BaselineLayout.SINGLE, _touched())
+
+
+def test_round_trips_a_single_file_baseline(tmp_path: Path) -> None:
     path = BaselinePath(tmp_path / ".noprim.json")
-    baseline = Baseline(
-        frozenset(
-            {
-                _key(Filename("src/a.py"), Qualname("f.a")),
-                _key(Filename("src/a.py"), Qualname("f.b")),
-            }
-        )
+    baseline = _baseline(
+        _key(Filename("src/a.py"), Qualname("f.a")),
+        _key(Filename("src/a.py"), Qualname("f.b")),
     )
 
-    write_baseline(path, baseline)
+    _single(path, baseline)
 
-    assert read_baseline(path) == baseline
+    assert read_baseline(path, BaselineLayout.SINGLE) == baseline
+
+
+def test_round_trips_a_split_baseline(tmp_path: Path) -> None:
+    path = BaselinePath(tmp_path / "baseline")
+    baseline = _baseline(
+        _key(Filename("src/a.py"), Qualname("f.a")),
+        _key(Filename("src/b.py"), Qualname("f.a")),
+    )
+
+    _ = write_baseline(
+        path,
+        baseline,
+        BaselineLayout.SPLIT,
+        _touched(Filename("src/a.py"), Filename("src/b.py")),
+    )
+
+    assert read_baseline(path, BaselineLayout.SPLIT) == baseline
 
 
 def test_groups_entries_by_filename_on_disk(tmp_path: Path) -> None:
     path = BaselinePath(tmp_path / ".noprim.json")
 
-    write_baseline(
+    _single(
         path,
-        Baseline(
-            frozenset(
-                {
-                    _key(Filename("src/a.py"), Qualname("f.a")),
-                    _key(Filename("src/b.py"), Qualname("f.a")),
-                }
-            )
+        _baseline(
+            _key(Filename("src/a.py"), Qualname("f.a")),
+            _key(Filename("src/b.py"), Qualname("f.a")),
         ),
     )
 
@@ -90,12 +115,129 @@ def test_groups_entries_by_filename_on_disk(tmp_path: Path) -> None:
     ]
 
 
+def test_a_split_baseline_mirrors_the_source_tree(tmp_path: Path) -> None:
+    path = BaselinePath(tmp_path / "baseline")
+
+    _ = write_baseline(
+        path,
+        _baseline(_key(Filename("src/pkg/a.py"), Qualname("f.a"))),
+        BaselineLayout.SPLIT,
+        _touched(Filename("src/pkg/a.py")),
+    )
+
+    entry = path.root / "src" / "pkg" / "a.py.json"
+    written = cast("dict[str, Any]", json.loads(entry.read_text()))
+    assert written["version"] == 2
+    assert list(cast("dict[str, Any]", written["files"])) == ["src/pkg/a.py"]
+
+
+def test_a_split_write_leaves_files_it_did_not_touch_alone(tmp_path: Path) -> None:
+    path = BaselinePath(tmp_path / "baseline")
+    _ = write_baseline(
+        path,
+        _baseline(
+            _key(Filename("a.py"), Qualname("f.a")),
+            _key(Filename("b.py"), Qualname("f.a")),
+        ),
+        BaselineLayout.SPLIT,
+        _touched(Filename("a.py"), Filename("b.py")),
+    )
+    before = (path.root / "b.py.json").read_bytes()
+
+    _ = write_baseline(
+        path,
+        _baseline(
+            _key(Filename("a.py"), Qualname("f.b")),
+            _key(Filename("b.py"), Qualname("f.a")),
+        ),
+        BaselineLayout.SPLIT,
+        _touched(Filename("a.py")),
+    )
+
+    assert (path.root / "b.py.json").read_bytes() == before
+    assert read_baseline(path, BaselineLayout.SPLIT) == _baseline(
+        _key(Filename("a.py"), Qualname("f.b")),
+        _key(Filename("b.py"), Qualname("f.a")),
+    )
+
+
+def test_a_split_write_deletes_the_file_of_a_source_file_with_no_entries(
+    tmp_path: Path,
+) -> None:
+    path = BaselinePath(tmp_path / "baseline")
+    _ = write_baseline(
+        path,
+        _baseline(_key(Filename("src/pkg/a.py"), Qualname("f.a"))),
+        BaselineLayout.SPLIT,
+        _touched(Filename("src/pkg/a.py")),
+    )
+
+    write = write_baseline(
+        path, Baseline.empty(), BaselineLayout.SPLIT, _touched(Filename("src/pkg/a.py"))
+    )
+
+    assert write.deleted.root == 1
+    # An empty directory is dirty locally and absent for everyone who pulls.
+    assert list(path.root.iterdir()) == []
+
+
+def test_an_empty_split_directory_is_not_a_baseline_yet(tmp_path: Path) -> None:
+    path = BaselinePath(tmp_path / "baseline")
+    path.root.mkdir()
+
+    assert baseline_exists(path, BaselineLayout.SPLIT).negated
+    assert read_baseline(path, BaselineLayout.SPLIT) == Baseline.empty()
+
+
+def test_a_source_file_outside_the_baseline_directory_cannot_be_split(
+    tmp_path: Path,
+) -> None:
+    path = BaselinePath(tmp_path / "baseline")
+
+    with pytest.raises(UnmirrorableFilenameError) as caught:
+        _ = write_baseline(
+            path,
+            _baseline(_key(Filename("../a.py"), Qualname("f.a"))),
+            BaselineLayout.SPLIT,
+            _touched(Filename("../a.py")),
+        )
+    assert "--baseline-layout single" in str(caught.value)
+
+
+def test_a_single_file_is_not_a_split_baseline(tmp_path: Path) -> None:
+    path = BaselinePath(tmp_path / ".noprim.json")
+    _single(path, Baseline.empty())
+
+    with pytest.raises(LayoutMismatchError) as caught:
+        _ = read_baseline(path, BaselineLayout.SPLIT)
+    assert "--baseline-layout single" in str(caught.value)
+
+
+def test_a_split_directory_is_not_a_single_baseline(tmp_path: Path) -> None:
+    path = BaselinePath(tmp_path / "baseline")
+    path.root.mkdir()
+
+    with pytest.raises(LayoutMismatchError) as caught:
+        _ = write_baseline(path, Baseline.empty(), BaselineLayout.SINGLE, _touched())
+    assert "--baseline-layout split" in str(caught.value)
+
+
 def test_rejects_a_baseline_that_is_not_json(tmp_path: Path) -> None:
     path = BaselinePath(tmp_path / ".noprim.json")
     _ = path.root.write_text("{oops")
 
     with pytest.raises(MalformedBaselineError):
-        _ = read_baseline(path)
+        _ = read_baseline(path, BaselineLayout.SINGLE)
+
+
+def test_rejects_a_split_entry_that_is_not_json(tmp_path: Path) -> None:
+    path = BaselinePath(tmp_path / "baseline")
+    path.root.mkdir()
+    _ = (path.root / "a.py.json").write_text("{oops")
+
+    with pytest.raises(MalformedBaselineError) as caught:
+        _ = read_baseline(path, BaselineLayout.SPLIT)
+    assert "a.py.json" in str(caught.value)
 
 
 def test_rejects_a_baseline_written_by_a_later_noprim(tmp_path: Path) -> None:
@@ -103,7 +245,7 @@ def test_rejects_a_baseline_written_by_a_later_noprim(tmp_path: Path) -> None:
     _ = path.root.write_text(json.dumps({"version": 3, "files": {}}))
 
     with pytest.raises(UnsupportedBaselineVersionError) as caught:
-        _ = read_baseline(path)
+        _ = read_baseline(path, BaselineLayout.SINGLE)
     assert "upgrade noprim" in str(caught.value)
 
 
@@ -112,7 +254,7 @@ def test_an_older_baseline_asks_to_be_regenerated(tmp_path: Path) -> None:
     _ = path.root.write_text(json.dumps({"version": 1, "files": {}}))
 
     with pytest.raises(UnsupportedBaselineVersionError) as caught:
-        _ = read_baseline(path)
+        _ = read_baseline(path, BaselineLayout.SINGLE)
     assert "--write-baseline" in str(caught.value)
 
 

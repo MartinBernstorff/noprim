@@ -24,10 +24,12 @@ from noprim_core.baseline import Baseline, BaselineOutcome, apply_baseline
 from noprim_core.rules.preset import Preset
 from noprim_core.settings import FieldName, Settings, description
 from noprim_io.baseline import (
+    BaselineError,
+    BaselineLayout,
     BaselinePath,
-    MalformedBaselineError,
     UnsupportedBaselineVersionError,
     Violations,
+    baseline_exists,
     keyed_violations,
     prunable_files,
     read_baseline,
@@ -45,7 +47,12 @@ class ConfigError(typer.BadParameter):
 
 class WriteBaselineWithoutPathError(typer.BadParameter):
     def __init__(self) -> None:
-        super().__init__("--write-baseline needs --baseline to say which file to write")
+        super().__init__("--write-baseline needs --baseline to say where to write")
+
+
+class BaselineLayoutWithoutPathError(typer.BadParameter):
+    def __init__(self) -> None:
+        super().__init__("--baseline-layout needs --baseline to say where to write")
 
 
 class GroupByWithoutStatisticsError(typer.BadParameter):
@@ -240,12 +247,19 @@ def check(  # noqa: PLR0913, PLR0917
         Path | None,
         typer.Option(
             "--baseline",
-            help="Suppress violations recorded in this file, writing it if absent.",
+            help="Suppress violations recorded at this path, writing it if absent.",
+        ),
+    ] = None,
+    baseline_layout: Annotated[  # noprim: ignore
+        BaselineLayout | None,
+        typer.Option(
+            "--baseline-layout",
+            help="Record one file per source file, or one shared file.",
         ),
     ] = None,
     refresh: Annotated[  # noprim: ignore
         bool,
-        typer.Option("--write-baseline", help="Rewrite an existing baseline file."),
+        typer.Option("--write-baseline", help="Rewrite an existing baseline."),
     ] = False,
     quiet: Annotated[  # noprim: ignore
         bool, typer.Option("--quiet", "-q", help="Suppress the summary.")
@@ -269,6 +283,8 @@ def check(  # noqa: PLR0913, PLR0917
 ) -> None:
     if refresh and baseline is None:
         raise WriteBaselineWithoutPathError
+    if baseline_layout is not None and baseline is None:
+        raise BaselineLayoutWithoutPathError
     if group_by is not None and not statistics:
         raise GroupByWithoutStatisticsError
     # Nothing is bound yet, so locals() is exactly the parameters above.
@@ -308,16 +324,17 @@ def check(  # noqa: PLR0913, PLR0917
         _emit(render(RunOutcome(report=report), elapsed, options))
 
     path = BaselinePath(baseline)
+    layout = baseline_layout if baseline_layout is not None else BaselineLayout.SPLIT
     outcome = _against_baseline(
-        report, CheckPaths(targets), path, Verdict(root=refresh)
+        report, CheckPaths(targets), path, layout, Verdict(root=refresh)
     )
 
-    if refresh or not path.root.exists():
+    if refresh or baseline_exists(path, layout).negated:
         try:
-            write_baseline(path, outcome.regenerated)
-        except OSError as error:
+            write = write_baseline(path, outcome.regenerated, layout, outcome.touched)
+        except (BaselineError, OSError) as error:
             _fail(error)
-        _emit(render(baseline_written(report, outcome, path), elapsed, options))
+        _emit(render(baseline_written(report, outcome, write), elapsed, options))
 
     _emit(render(baseline_applied(report, outcome), elapsed, options))
 
@@ -335,11 +352,13 @@ def _fail(error: Exception) -> NoReturn:
     raise typer.Exit(2) from error
 
 
-def _existing_baseline(path: BaselinePath, refresh: Verdict) -> Baseline:
-    if not path.root.exists():
+def _existing_baseline(
+    path: BaselinePath, layout: BaselineLayout, refresh: Verdict
+) -> Baseline:
+    if baseline_exists(path, layout).negated:
         return Baseline.empty()
     try:
-        return read_baseline(path)
+        return read_baseline(path, layout)
     except UnsupportedBaselineVersionError as error:
         # --write-baseline is the remedy the error names, so it has to survive it.
         if refresh.and_(error.outdated).negated:
@@ -348,21 +367,20 @@ def _existing_baseline(path: BaselinePath, refresh: Verdict) -> Baseline:
 
 
 def _against_baseline(
-    report: CheckReport, targets: CheckPaths, path: BaselinePath, refresh: Verdict
+    report: CheckReport,
+    targets: CheckPaths,
+    path: BaselinePath,
+    layout: BaselineLayout,
+    refresh: Verdict,
 ) -> BaselineOutcome:
     # A baseline path under a directory that does not exist surfaces as
     # ExistingDirectory failing to validate rather than as an OSError.
     try:
-        existing = _existing_baseline(path, refresh)
+        existing = _existing_baseline(path, layout, refresh)
         return apply_baseline(
             keyed_violations(Violations(report.violations), path),
             existing,
             prunable_files(report, targets, existing, path),
         )
-    except (
-        MalformedBaselineError,
-        UnsupportedBaselineVersionError,
-        OSError,
-        ValidationError,
-    ) as error:
+    except (BaselineError, OSError, ValidationError) as error:
         _fail(error)

@@ -199,76 +199,85 @@ those, for a codebase that would rather not suppress them a line at a time.
 │   paths      <path>  Files or directories to check.                          │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --allow                                      <str>        Remove these types │
-│                                                           from the           │
-│                                                           deny-list.         │
-│                                                           Repeatable.        │
-│ --deny                                       <str>        Add these types to │
-│                                                           the deny-list.     │
-│                                                           Repeatable.        │
-│ --ignore-names                               <str>        Skip parameters    │
-│                                                           and attributes     │
-│                                                           matching these     │
-│                                                           globs. Repeatable. │
-│ --ignore-param-na…                           <str>        Skip parameters    │
-│                                                           matching these     │
-│                                                           globs. Repeatable. │
-│ --ignore-attribut…                           <str>        Skip attributes    │
-│                                                           matching these     │
-│                                                           globs. Repeatable. │
-│ --ignore-inner-cl…                           <str>        Skip the body of a │
-│                                                           nested class       │
-│                                                           matching these     │
-│                                                           globs. Repeatable. │
-│ --exempt-typer-ar…      --no-exempt-type…                 Skip bool          │
-│                                                           parameters of a    │
-│                                                           Typer command or   │
-│                                                           callback.          │
-│ --exclude                                    <str>        Globs to skip      │
-│                                                           while walking,     │
-│                                                           anchored at the    │
-│                                                           config.            │
-│                                                           Repeatable.        │
-│ --preset                                     <core|all>   The rule set       │
-│                                                           select,            │
-│                                                           extend-select and  │
-│                                                           ignore work on.    │
-│ --select                                     <str>        Run these rule     │
-│                                                           codes instead of   │
-│                                                           the preset's.      │
-│                                                           Prefixes count.    │
-│                                                           Repeatable.        │
-│ --extend-select                              <str>        Run these rule     │
-│                                                           codes as well as   │
-│                                                           the selected ones. │
-│                                                           Repeatable.        │
-│ --ignore                                     <str>        Drop these rule    │
-│                                                           codes from the     │
-│                                                           run. Repeatable.   │
-│ --baseline                                   <path>       Suppress           │
-│                                                           violations         │
-│                                                           recorded in this   │
-│                                                           file, writing it   │
-│                                                           if absent.         │
-│ --write-baseline                                          Rewrite an         │
-│                                                           existing baseline  │
-│                                                           file.              │
-│ --quiet             -q                                    Suppress the       │
-│                                                           summary.           │
-│ --statistics                                              Print counts       │
-│                                                           instead of one     │
-│                                                           line each.         │
-│ --group-by                                   <str>        Axes to count      │
-│                                                           --statistics       │
-│                                                           along: rule, type, │
-│                                                           name or path.      │
-│                                                           Comma-separated,   │
-│                                                           repeatable.        │
-│ --output-format                              <text|json>  How to print what  │
-│                                                           was found.         │
-│                                                           [default: text]    │
-│ --help                                                    Show this message  │
-│                                                           and exit.          │
+│ --allow                                    <str>           Remove these      │
+│                                                            types from the    │
+│                                                            deny-list.        │
+│                                                            Repeatable.       │
+│ --deny                                     <str>           Add these types   │
+│                                                            to the deny-list. │
+│                                                            Repeatable.       │
+│ --ignore-names                             <str>           Skip parameters   │
+│                                                            and attributes    │
+│                                                            matching these    │
+│                                                            globs.            │
+│                                                            Repeatable.       │
+│ --ignore-param-n…                          <str>           Skip parameters   │
+│                                                            matching these    │
+│                                                            globs.            │
+│                                                            Repeatable.       │
+│ --ignore-attribu…                          <str>           Skip attributes   │
+│                                                            matching these    │
+│                                                            globs.            │
+│                                                            Repeatable.       │
+│ --ignore-inner-c…                          <str>           Skip the body of  │
+│                                                            a nested class    │
+│                                                            matching these    │
+│                                                            globs.            │
+│                                                            Repeatable.       │
+│ --exempt-typer-a…      --no-exempt-typ…                    Skip bool         │
+│                                                            parameters of a   │
+│                                                            Typer command or  │
+│                                                            callback.         │
+│ --exclude                                  <str>           Globs to skip     │
+│                                                            while walking,    │
+│                                                            anchored at the   │
+│                                                            config.           │
+│                                                            Repeatable.       │
+│ --preset                                   <core|all>      The rule set      │
+│                                                            select,           │
+│                                                            extend-select and │
+│                                                            ignore work on.   │
+│ --select                                   <str>           Run these rule    │
+│                                                            codes instead of  │
+│                                                            the preset's.     │
+│                                                            Prefixes count.   │
+│                                                            Repeatable.       │
+│ --extend-select                            <str>           Run these rule    │
+│                                                            codes as well as  │
+│                                                            the selected      │
+│                                                            ones. Repeatable. │
+│ --ignore                                   <str>           Drop these rule   │
+│                                                            codes from the    │
+│                                                            run. Repeatable.  │
+│ --baseline                                 <path>          Suppress          │
+│                                                            violations        │
+│                                                            recorded at this  │
+│                                                            path, writing it  │
+│                                                            if absent.        │
+│ --baseline-layout                          <split|single>  Record one file   │
+│                                                            per source file,  │
+│                                                            or one shared     │
+│                                                            file.             │
+│ --write-baseline                                           Rewrite an        │
+│                                                            existing          │
+│                                                            baseline.         │
+│ --quiet            -q                                      Suppress the      │
+│                                                            summary.          │
+│ --statistics                                               Print counts      │
+│                                                            instead of one    │
+│                                                            line each.        │
+│ --group-by                                 <str>           Axes to count     │
+│                                                            --statistics      │
+│                                                            along: rule,      │
+│                                                            type, name or     │
+│                                                            path.             │
+│                                                            Comma-separated,  │
+│                                                            repeatable.       │
+│ --output-format                            <text|json>     How to print what │
+│                                                            was found.        │
+│                                                            [default: text]   │
+│ --help                                                     Show this message │
+│                                                            and exit.         │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 

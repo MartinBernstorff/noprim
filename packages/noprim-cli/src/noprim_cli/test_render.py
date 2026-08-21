@@ -28,7 +28,7 @@ from noprim_core.site import (
 )
 from noprim_core.suppression import SuppressedViolation, SuppressionReason
 from noprim_core.violation import Violation
-from noprim_io.baseline import BaselinePath
+from noprim_io.baseline import BaselineLayout, BaselinePath
 from noprim_io.check import CheckReport, ErrorMessage, FileError
 from noprim_io.paths import SourceFile
 from noprim_types.verdict import Verdict
@@ -92,7 +92,23 @@ def _one_violation() -> CheckReport:
 
 
 def _wrote(count: Count) -> WrittenBaseline:
-    return WrittenBaseline(path=BaselinePath(Path(".noprim.json")), written=count)
+    return WrittenBaseline(
+        path=BaselinePath(Path(".noprim.json")),
+        layout=BaselineLayout.SINGLE,
+        written=count,
+        files=Count(1),
+        deleted=Count(0),
+    )
+
+
+def _split(count: Count, files: Count, deleted: Count) -> WrittenBaseline:
+    return WrittenBaseline(
+        path=BaselinePath(Path(".noprim")),
+        layout=BaselineLayout.SPLIT,
+        written=count,
+        files=files,
+        deleted=deleted,
+    )
 
 
 def _rendered(outcome: RunOutcome, options: RenderOptions) -> Rendered:
@@ -301,6 +317,27 @@ def test_a_written_baseline_reports_what_it_recorded(
     assert rendered.stderr[0].root == (
         f"Checked 1 file in 500ms - wrote {expected} to .noprim.json"
     )
+
+
+@pytest.mark.parametrize(
+    ("deleted", "expected"),
+    [
+        (0, "wrote 3 violations to 2 files under .noprim"),
+        (1, "wrote 3 violations to 2 files under .noprim, deleted 1 file"),
+        (2, "wrote 3 violations to 2 files under .noprim, deleted 2 files"),
+    ],
+)
+def test_a_split_baseline_reports_the_files_it_touched(
+    deleted: int, expected: str
+) -> None:
+    outcome = RunOutcome(
+        report=_one_violation(),
+        written=_split(Count(3), Count(2), Count(deleted)),
+    )
+
+    rendered = _loud(outcome)
+
+    assert rendered.stderr[0].root == f"Checked 1 file in 500ms - {expected}"
 
 
 def test_a_written_baseline_records_violations_instead_of_printing_them() -> None:
