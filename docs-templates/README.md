@@ -270,8 +270,8 @@ rule in one directory alone, select it globally and ignore it everywhere else.
 A per-path ignore deselects rather than suppresses. The rule never runs, so nothing is
 counted in the summary the way a `# noprim: ignore` comment is — the same as the
 top-level `ignore`. If a baseline recorded violations for a code you then ignore for
-those paths, its entries stop matching, are reported as stale on stderr, and are pruned
-the next time the baseline is written.
+those paths, its entries stop matching, are reported as stale on stderr, fail the run,
+and are pruned the next time the baseline is written.
 
 Passing `--ignore` on the command line replaces the top-level `ignore` key only;
 per-path entries still apply on top of it.
