@@ -304,13 +304,13 @@ def _document(payload: BaseModel) -> Arr[DisplayText]:
     return Arr([DisplayText(payload.model_dump_json(indent=2, exclude_none=True))])
 
 
-def _stale_note(count: Count) -> DisplayText:
+def _stale_error(count: Count) -> DisplayText:
     subject = (
         f"{count.root} baseline entry no longer matches"
         if count.root == 1
         else f"{count.root} baseline entries no longer match"
     )
-    return DisplayText(f"note: {subject}; rerun with --write-baseline to prune")
+    return DisplayText(f"error: {subject}; rerun with --write-baseline to prune")
 
 
 def _summary_line(
@@ -348,7 +348,7 @@ def _notices(
 ) -> Arr[DisplayText]:
     if options.quiet:
         return Arr([])
-    stale = [_stale_note(outcome.stale)] if outcome.stale.root > 0 else []
+    stale = [_stale_error(outcome.stale)] if outcome.stale.root > 0 else []
     return Arr([*stale, _summary_line(outcome.report, elapsed, _summary(outcome))])
 
 
@@ -389,7 +389,7 @@ def _body(report: CheckReport, options: RenderOptions) -> Arr[DisplayText]:
 
 def render(outcome: RunOutcome, elapsed: Duration, options: RenderOptions) -> Rendered:
     report = _reportable(outcome)
-    found = len(report.violations) + len(report.errors)
+    found = len(report.violations) + len(report.errors) + outcome.stale.root
     return Rendered(
         stdout=tuple(_body(report, options)),
         stderr=tuple(_notices(outcome, elapsed, options)),

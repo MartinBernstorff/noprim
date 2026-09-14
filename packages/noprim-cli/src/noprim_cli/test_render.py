@@ -289,11 +289,11 @@ def test_quiet_hides_the_notices_but_not_the_diagnostics() -> None:
 @pytest.mark.parametrize(
     ("count", "expected"),
     [
-        (1, "note: 1 baseline entry no longer matches"),
-        (2, "note: 2 baseline entries no longer match"),
+        (1, "error: 1 baseline entry no longer matches"),
+        (2, "error: 2 baseline entries no longer match"),
     ],
 )
-def test_notes_stale_baseline_entries_before_the_summary(
+def test_reports_stale_baseline_entries_before_the_summary(
     count: int, expected: str
 ) -> None:
     rendered = _loud(RunOutcome(report=_nothing(), stale=Count(count)))
@@ -302,6 +302,16 @@ def test_notes_stale_baseline_entries_before_the_summary(
         f"{expected}; rerun with --write-baseline to prune"
     )
     assert rendered.stderr[1].root.startswith("Checked ")
+
+
+def test_quiet_hides_the_stale_entries_but_still_fails() -> None:
+    rendered = _rendered(
+        RunOutcome(report=_nothing(), stale=Count(1)),
+        RenderOptions(quiet=Verdict(root=True)),
+    )
+
+    assert rendered.stderr == ()
+    assert rendered.exit_code.root == 1
 
 
 @pytest.mark.parametrize(
@@ -622,6 +632,7 @@ def test_json_still_summarises_on_stderr() -> None:
             1,
         ),
         (RunOutcome(report=_one_violation(), written=_wrote(Count(1))), 0),
+        (RunOutcome(report=_nothing(), stale=Count(1)), 1),
     ],
 )
 def test_exit_code_follows_the_diagnostics(outcome: RunOutcome, expected: int) -> None:
