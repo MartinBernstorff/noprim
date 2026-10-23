@@ -30,7 +30,7 @@ jobs:
 
       - name: Python Semantic Release
         id: release
-        uses: python-semantic-release/python-semantic-release@39dd2052f2ce8282a5d932c31d58a2ca06d2550e # v10.6.1
+        uses: python-semantic-release/python-semantic-release@b700dbeb1f431a0fcc30a79f3f0869407fe07278 # v10.7.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Committing would write to protected main, which GITHUB_TOKEN cannot do.
@@ -49,5 +49,5 @@ jobs:
         run: uv build --out-dir dist
 
       - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         if: steps.release.outputs.released == 'true'
