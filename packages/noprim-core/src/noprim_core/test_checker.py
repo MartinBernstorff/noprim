@@ -2,7 +2,7 @@ import pytest
 from iterpy import Arr
 
 from noprim_core.checker import check_source
-from noprim_core.config import CheckConfig, NamePatterns
+from noprim_core.config import CheckConfig, NamePatterns, RootModelNames
 from noprim_core.rules.code import Selector, Selectors
 from noprim_core.rules.preset import Preset
 from noprim_core.rules.registry import core_selection, preset_selection, selection
@@ -196,6 +196,28 @@ def test_exempts_dunder_methods(source: str) -> None:
 )
 def test_exempts_root_model_bodies(source: str) -> None:
     assert list(_check(SourceCode(source))) == []
+
+
+def _extending_root_models(names: RootModelNames) -> CheckConfig:
+    return CheckConfig(selection=core_selection(), extend_root_models=names)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "class Id(FrozenRootModel[str]):\n    def get(self, key: int) -> str: ...\n",
+        "class Id(base.FrozenRootModel):\n    root: str\n",
+        "class Id(RootModel[str]):\n    root: str\n",
+    ],
+)
+def test_exempts_bodies_of_extended_root_models(source: str) -> None:
+    config = _extending_root_models(RootModelNames(("FrozenRootModel",)))
+    assert list(_check(SourceCode(source), config)) == []
+
+
+def test_reports_bodies_of_root_model_names_not_extended() -> None:
+    source = SourceCode("class Id(FrozenRootModel[str]):\n    root: str\n")
+    assert [v.qualname.root for v in _check(source)] == ["Id.root"]
 
 
 @pytest.mark.parametrize(

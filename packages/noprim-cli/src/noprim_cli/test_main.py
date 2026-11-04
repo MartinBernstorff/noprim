@@ -1139,3 +1139,31 @@ def test_no_exempt_typer_args_overrides_the_config_key(
     assert result.stdout.splitlines() == [
         'cli.py:2:17: NOPRIM001 parameter "force" is annotated "bool"'
     ]
+
+
+def test_extend_root_models_can_come_from_the_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".git").mkdir()
+    _ = (tmp_path / "noprim.toml").write_text(
+        'extend-root-models = ["FrozenRootModel"]\n'
+    )
+    _ = (tmp_path / "ids.py").write_text(
+        "class Id(FrozenRootModel[str]):\n    root: str\n"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["check", "-q", "ids.py"])
+
+    assert result.stdout.splitlines() == []
+
+
+def test_extend_root_models_flag_exempts_the_named_base(tmp_path: Path) -> None:
+    target = tmp_path / "ids.py"
+    _ = target.write_text("class Id(FrozenRootModel[str]):\n    root: str\n")
+
+    result = runner.invoke(
+        app, ["check", "-q", "--extend-root-models", "FrozenRootModel", str(target)]
+    )
+
+    assert result.stdout.splitlines() == []

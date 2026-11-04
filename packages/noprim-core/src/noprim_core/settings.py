@@ -9,6 +9,7 @@ from noprim_core.config import (
     CheckConfig,
     DeniedTypes,
     NamePatterns,
+    RootModelNames,
     TopTypes,
 )
 from noprim_core.rules.code import Selection, Selectors
@@ -250,6 +251,10 @@ class Settings(SharedKeys):
         default=Verdict(root=False),
         description="Skip bool parameters of a Typer command or callback.",
     )
+    extend_root_models: RootModelNames = Field(
+        default=RootModelNames(()),
+        description="Skip the body of a class subclassing these, as for RootModel.",
+    )
     per_path: PathOverrides = Field(
         default=PathOverrides(()),
         description="Overrides applied on top of the keys above, by path.",
@@ -293,4 +298,5 @@ class Settings(SharedKeys):
                 matching.inner_classes()
             ),
             exempt_typer_args=self.exempt_typer_args,
+            extend_root_models=self.extend_root_models,
         )

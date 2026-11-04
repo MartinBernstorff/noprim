@@ -70,6 +70,10 @@ class NamePatterns(RootModel[tuple[str, ...]]):
         return NamePatterns(self.root + other.root)
 
 
+class RootModelNames(RootModel[tuple[str, ...]]):
+    pass
+
+
 class CheckConfig(BaseModel):
     # Required: which rules run is the caller's decision, not a default frozen here.
     selection: Selection
@@ -81,3 +85,4 @@ class CheckConfig(BaseModel):
     ignored_attribute_names: NamePatterns = NamePatterns(())
     ignored_inner_classes: NamePatterns = NamePatterns(())
     exempt_typer_args: Verdict = Verdict(root=False)
+    extend_root_models: RootModelNames = RootModelNames(())

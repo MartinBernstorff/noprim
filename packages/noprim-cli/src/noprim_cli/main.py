@@ -223,6 +223,12 @@ def check(  # noqa: PLR0913, PLR0917
             help=_help(FieldName("exempt_typer_args")),
         ),
     ] = None,
+    extend_root_models: Annotated[  # noprim: ignore
+        list[str] | None,
+        typer.Option(
+            "--extend-root-models", help=_help(FieldName("extend_root_models"))
+        ),
+    ] = None,
     exclude: Annotated[  # noprim: ignore
         list[str] | None,
         typer.Option("--exclude", help=_help(FieldName("exclude"))),

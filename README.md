@@ -91,6 +91,9 @@ Some signatures are not the author's to choose, so noprim does not report them:
 
 - **Dunder methods.** `__eq__` takes `object` because the data model says so.
 - **`RootModel` subclass bodies.** Wrapping a primitive is the point of the pattern.
+  A codebase with its own base, say a frozen `class FrozenRootModel[T](RootModel[T])`,
+  names it in `extend-root-models` so its subclasses are exempt too. The match is on
+  the base's name, without resolving imports.
 - **Overload implementations.** The stubs above them carry the real types.
 - **Methods decorated `@override`.** A supertype dictated the signature, and the
   decorator says so in a form the type checker verifies. Matched on the decorator's
@@ -228,6 +231,12 @@ those, for a codebase that would rather not suppress them a line at a time.
 │                                                            parameters of a   │
 │                                                            Typer command or  │
 │                                                            callback.         │
+│ --extend-root-mo…                          <str>           Skip the body of  │
+│                                                            a class           │
+│                                                            subclassing       │
+│                                                            these, as for     │
+│                                                            RootModel.        │
+│                                                            Repeatable.       │
 │ --exclude                                  <str>           Globs to skip     │
 │                                                            while walking,    │
 │                                                            anchored at the   │
@@ -345,6 +354,7 @@ ignore-param-names = ["value", "*_contains"]
 ignore-attribute-names = ["_*"]
 ignore-inner-classes = ["Meta"]
 exempt-typer-args = true
+extend-root-models = ["FrozenRootModel"]
 preset = "core"
 extend-select = ["NOPRIM004"]
 ignore = ["NOPRIM002"]
@@ -362,20 +372,21 @@ Every key noprim accepts, with the value you get when you leave it out. Anything
 is an error rather than a silently ignored line.
 
 ```
-Key                     Type                Default  Description
-allow                   list of type names  []       Remove these types from the deny-list.
-deny                    list of type names  []       Add these types to the deny-list.
-exclude                 list of globs       []       Globs to skip while walking, anchored at the config.
-exempt-typer-args       true | false        false    Skip bool parameters of a Typer command or callback.
-extend-select           list of rule codes  []       Run these rule codes as well as the selected ones.
-ignore                  list of rule codes  []       Drop these rule codes from the run.
-ignore-attribute-names  list of globs       []       Skip attributes matching these globs.
-ignore-inner-classes    list of globs       []       Skip the body of a nested class matching these globs.
-ignore-names            list of globs       []       Skip parameters and attributes matching these globs.
-ignore-param-names      list of globs       []       Skip parameters matching these globs.
-per-path                list of tables      []       Overrides applied on top of the keys above, by path.
-preset                  "core" | "all"      "all"    The rule set select, extend-select and ignore work on.
-select                  list of rule codes  unset    Run these rule codes instead of the preset's. Prefixes count.
+Key                     Type                 Default  Description
+allow                   list of type names   []       Remove these types from the deny-list.
+deny                    list of type names   []       Add these types to the deny-list.
+exclude                 list of globs        []       Globs to skip while walking, anchored at the config.
+exempt-typer-args       true | false         false    Skip bool parameters of a Typer command or callback.
+extend-root-models      list of class names  []       Skip the body of a class subclassing these, as for RootModel.
+extend-select           list of rule codes   []       Run these rule codes as well as the selected ones.
+ignore                  list of rule codes   []       Drop these rule codes from the run.
+ignore-attribute-names  list of globs        []       Skip attributes matching these globs.
+ignore-inner-classes    list of globs        []       Skip the body of a nested class matching these globs.
+ignore-names            list of globs        []       Skip parameters and attributes matching these globs.
+ignore-param-names      list of globs        []       Skip parameters matching these globs.
+per-path                list of tables       []       Overrides applied on top of the keys above, by path.
+preset                  "core" | "all"       "all"    The rule set select, extend-select and ignore work on.
+select                  list of rule codes   unset    Run these rule codes instead of the preset's. Prefixes count.
 ```
 
 Globs are anchored at the directory holding the config file, or at the repo root when

@@ -60,6 +60,9 @@ Some signatures are not the author's to choose, so noprim does not report them:
 
 - **Dunder methods.** `__eq__` takes `object` because the data model says so.
 - **`RootModel` subclass bodies.** Wrapping a primitive is the point of the pattern.
+  A codebase with its own base, say a frozen `class FrozenRootModel[T](RootModel[T])`,
+  names it in `extend-root-models` so its subclasses are exempt too. The match is on
+  the base's name, without resolving imports.
 - **Overload implementations.** The stubs above them carry the real types.
 - **Methods decorated `@override`.** A supertype dictated the signature, and the
   decorator says so in a form the type checker verifies. Matched on the decorator's
