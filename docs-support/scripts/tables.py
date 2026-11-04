@@ -7,7 +7,7 @@ from iterpy import Arr
 from pydantic import BaseModel, ConfigDict, RootModel
 from pydantic.fields import FieldInfo
 
-from noprim_core.config import NamePatterns
+from noprim_core.config import NamePatterns, RootModelNames
 from noprim_core.rules.code import Selectors
 from noprim_core.rules.registry import RULES
 from noprim_core.rules.rule import Rule
@@ -106,6 +106,7 @@ _TYPES = {
     DeniedNames: "list of type names",
     PathPatterns: "list of globs",
     NamePatterns: "list of globs",
+    RootModelNames: "list of class names",
     Selectors: "list of rule codes",
     Verdict: "true | false",
     PathOverrides: "list of tables",

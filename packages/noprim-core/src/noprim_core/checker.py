@@ -6,7 +6,7 @@ from iterpy import Arr
 from pydantic import BaseModel, RootModel
 
 from noprim_core.annotations import AnnotationText, SymbolName, head_name, names_in
-from noprim_core.config import CheckConfig
+from noprim_core.config import CheckConfig, RootModelNames
 from noprim_core.rules.registry import RULES
 from noprim_core.rules.rule import Rule
 from noprim_core.site import (
@@ -40,6 +40,7 @@ class Enclosing(BaseModel):
     qualname: Qualname = Qualname("")
     classes: ClassChain = ClassChain(())
     in_pytest_module: Verdict = Verdict(root=False)
+    root_models: RootModelNames = RootModelNames(())
 
     def named(self, name: Qualname) -> Qualname:
         return self.qualname.child(name)
@@ -149,8 +150,14 @@ def _is_pytest_module(filename: Filename) -> Verdict:
     return Verdict(stem.startswith("test_") or stem.endswith("_test"))
 
 
-def _subclasses_root_model(class_def: ast.ClassDef) -> Verdict:
-    return _mentions(Arr(class_def.bases), SymbolName("RootModel"))
+def _subclasses_root_model(
+    class_def: ast.ClassDef, extended: RootModelNames
+) -> Verdict:
+    return Verdict.any(
+        Arr(("RootModel", *extended.root)).map(
+            lambda name: _mentions(Arr(class_def.bases), SymbolName(name))
+        )
+    )
 
 
 def _parameter_owner(function: Function, in_pytest_module: Verdict) -> Owner:
@@ -200,7 +207,7 @@ def _function_sites(
 
 
 def _class_sites(class_def: ast.ClassDef, scope: Enclosing) -> Arr[Site]:
-    if _subclasses_root_model(class_def):
+    if _subclasses_root_model(class_def, scope.root_models):
         return Arr([])
 
     inside = scope.in_class(Qualname(class_def.name))
@@ -304,7 +311,11 @@ def check_source(
     tree = ast.parse(source.root, filename=filename.root)
     enabled = Arr(RULES).filter(lambda rule: config.selection.contains(rule.code))
     sites = _sites_in(
-        tree.body, Enclosing(in_pytest_module=_is_pytest_module(filename))
+        tree.body,
+        Enclosing(
+            in_pytest_module=_is_pytest_module(filename),
+            root_models=config.extend_root_models,
+        ),
     )
     return _suppressions(source, sites, config).apply(
         sites.map(

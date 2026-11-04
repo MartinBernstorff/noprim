@@ -3,7 +3,7 @@ from collections.abc import Callable
 import pytest
 from pydantic import ValidationError
 
-from noprim_core.config import DeniedTypes, NamePatterns
+from noprim_core.config import DeniedTypes, NamePatterns, RootModelNames
 from noprim_core.rules.code import RuleCode, Selector, Selectors
 from noprim_core.rules.preset import Preset
 from noprim_core.rules.registry import (
@@ -394,3 +394,14 @@ def test_typer_arguments_are_reported_by_default() -> None:
 def test_exempt_typer_args_is_carried_through() -> None:
     settings = Settings.model_validate({"exempt-typer-args": True})
     assert settings.resolve(_ANY).exempt_typer_args
+
+
+def test_no_root_models_are_extended_by_default() -> None:
+    assert Settings().resolve(_ANY).extend_root_models == RootModelNames(())
+
+
+def test_extend_root_models_is_carried_through() -> None:
+    settings = Settings.model_validate({"extend-root-models": ["FrozenRootModel"]})
+    assert settings.resolve(_ANY).extend_root_models == RootModelNames(
+        ("FrozenRootModel",)
+    )
